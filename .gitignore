@@ -1,0 +1,320 @@
+# --- Unity caches (ignore anywhere in the repo) ---
+**/[Ll]ibrary/
+**/[Tt]emp/
+**/[Oo]bj/
+**/[Bb]uild/
+**/[Bb]uilds/
+**/[Ll]ogs/
+**/[Mm]emoryCaptures/
+**/[Uu]serSettings/
+**/[Pp]ackage[Cc]ache/
+
+# Keep Unity project sources & configs
+# (Do NOT ignore Packages — we want it tracked)
+# Assets/, Packages/, ProjectSettings/ are intended to be versioned
+
+# JetBrains Rider plugin (optional)
+[Aa]ssets/Plugins/Editor/JetBrains*
+
+# VS/IDE junk...
+.vs/
+.gradle/
+ExportedObj/
+.consulo/
+*.csproj
+*.sln
+*.user
+*.pidb
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+
+# Unity3D generated meta files
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Unity3D generated file on crash reports
+sysinfo.txt
+
+# Builds
+*.apk
+*.unitypackage
+
+# Crashlytics generated file
+crashlytics-build.properties
+
+# ===================================
+# Unity Specific for this Project
+# ===================================
+
+# Unity Package Manager
+/[Pp]ackages/
+# But keep the manifest for package dependencies
+!/[Pp]ackages/manifest.json
+!/[Pp]ackages/packages-lock.json
+
+# Unity Auto-generated files
+/[Aa]ssets/StreamingAssets/aa.meta
+/[Aa]ssets/StreamingAssets/aa/
+
+# Unity Addressables
+/[Aa]ssets/AddressableAssetsData/*/*.bin*
+/[Aa]ssets/AddressableAssetsData/*/catalog*.json
+/[Aa]ssets/AddressableAssetsData/*/settings*.json
+
+# Unity Timeline
+Timeline/
+
+# Unity Recorder
+/[Aa]ssets/SampleScenes/
+
+# ===================================
+# VRM and Avatar Specific
+# ===================================
+
+# Large VRM model files (optional - uncomment if you want to exclude them)
+# *.vrm
+# /[Aa]ssets/Avatar/**/*.vrm
+
+# Generated avatar thumbnails
+/[Aa]ssets/Avatar/**/*.png.meta
+/[Aa]ssets/Avatar/**/Textures/thumbnails/
+
+# ===================================
+# OSC and Network Specific
+# ===================================
+
+# OSC configuration files (if you want to keep them private)
+# /[Aa]ssets/StreamingAssets/OSCConfig/
+
+# Network logs
+*.osclog
+/[Aa]ssets/OSCLogs/
+
+# ===================================
+# TouchDesigner Integration
+# ===================================
+
+# TouchDesigner project files (if stored in Unity project)
+# *.toe
+# *.tox
+# *.comp
+
+# TouchDesigner exports
+/TouchDesigner/Exports/
+/TD_Exports/
+
+# MediaPipe cache/temporary files
+/MediaPipe/cache/
+/MediaPipe/temp/
+
+# ===================================
+# Audio (Wwise) Specific
+# ===================================
+
+# Wwise generated files
+/[Aa]ssets/Wwise/Deployment/
+/[Aa]ssets/StreamingAssets/Audio/GeneratedSoundBanks/
+
+# Wwise cache files
+*.cache
+/WwiseProject/IncrementalSoundBanks/
+/WwiseProject/GeneratedSoundBanks/
+/WwiseProject/.cache/
+
+# ===================================
+# IDE and Editor Specific
+# ===================================
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# Visual Studio Code
+.vscode/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# VS Code workspace settings
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/launch.json
+.vscode/extensions.json
+
+# ===================================
+# OS Specific
+# ===================================
+
+# Windows
+Thumbs.db
+Thumbs.db.meta
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.DS_Store.meta
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ===================================
+# Custom Project Specific
+# ===================================
+
+# Local configuration files
+/LocalConfig/
+*.local
+*local.json
+
+# Test files and temporary scripts
+/Test/
+/Testing/
+*test*.cs.meta
+*Test*.cs.meta
+
+# Documentation drafts
+/Docs/drafts/
+*.draft.md
+
+# Backup files
+*.bak
+*.backup
+*_backup.*
+*~backup*
+
+# Log files
+*.log
+/Logs/
+
+# Temporary art assets
+/Art/temp/
+/Art/wip/
+*.psd
+*.ai
+*.sketch
+
+# Personal notes
+notes.txt
+TODO.txt
+*.personal
+
+# ===================================
+# Package Manager and Dependencies
+# ===================================
+
+# npm (if using any Node.js tools)
+node_modules/
+npm-debug.log*
+
+# Python cache (for any Python scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pycache
+
+# ===================================
+# Build and Distribution
+# ===================================
+
+# Build outputs
+/Builds/
+/Build/
+/Release/
+/Distribution/
+
+# Platform specific builds
+/Android/
+/iOS/
+/WebGL/
+/Windows/
+/Mac/
+/Linux/
+
+# Archives and compressed files
+*.zip
+*.rar
+*.7z
+*.tar.gz
+
+# ===================================
+# Secrets and Sensitive Data
+# ===================================
+
+# API keys and secrets
+secrets.json
+.env
+*.key
+*.pem
+*.p12
+
+# Personal data
+userdata/
+playerdata/
+profiles/
+
+# ===================================
+# Performance and Profiling
+# ===================================
+
+# Unity Profiler data
+*.data
+/ProfilerData/
+
+# Performance logs
+perf_*.log
+framerate_*.log
+
+# ===================================
+# END OF .gitignore
+# ===================================
+
+# Note: This .gitignore covers Unity, TouchDesigner integration, VRM avatars,
+# OSC communication, Wwise audio, and common development tools.
+# Adjust according to your specific project needs.
