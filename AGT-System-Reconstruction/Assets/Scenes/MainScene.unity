@@ -473,13 +473,11 @@ MonoBehaviour:
   touchDesignerPort: 7000
   maxQueueSize: 100
   dataTransmissionInterval: 0
-  unityReceivePort: 62139
-  autoConnectReceiver: 1
+  unityReceivePort: 3333
+  autoStartReceiver: 1
   debugMode: 1
   logIncomingMessages: 0
   logOutgoingMessages: 0
-  receiver: {fileID: 0}
-  sender: {fileID: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

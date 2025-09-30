@@ -16,9 +16,9 @@ public class OSCManager : MonoBehaviour
     [SerializeField] private int maxQueueSize = 100;
     [SerializeField] private float dataTransmissionInterval = 0f;
     
-    [Header("Incoming Messages (extOSC - TouchDesigner to Unity)")]
-    [SerializeField] private int unityReceivePort = 62139;
-    [SerializeField] private bool autoConnectReceiver = true;
+    [Header("Incoming Messages (uOSC - TouchDesigner to Unity)")]
+    [SerializeField] private int unityReceivePort = 333333;
+    [SerializeField] private bool autoStartReceiver = true;
     
     [Header("Debug Settings")]
     [SerializeField] private bool debugMode = true;
@@ -28,14 +28,18 @@ public class OSCManager : MonoBehaviour
     //=============================Go TTT !!!============================================
 
     public static OSCManager Instance;
-    [Header("Receiving (from TouchDesigner)")]
-    public OSCReceiver receiver;  // extOSC
     
     [Header("Sending (to TouchDesigner)")]  
-    public uOscClient sender;      // uOSC wrapper
+    private uOscClient sender;      // uOSC wrapper
+    [Header("Receiving (from TouchDesigner)")]
+    private uOscServer receiver;  // uOSC
+    
+    // Message routing for incoming messages
+    private Dictionary<string, System.Action<Message>> messageHandlers = new Dictionary<string, System.Action<Message>>();
+
     
     // Connection status
-    public bool IsReceiverConnected => receiver != null && receiver.IsStarted;
+    public bool IsReceiverConnected => receiver != null && receiver.isRunning;
     public bool IsSenderConnected => sender != null && sender.isRunning;
     public bool IsFullyConnected => IsReceiverConnected && IsSenderConnected;
     
@@ -79,9 +83,9 @@ public class OSCManager : MonoBehaviour
     
     private void InitializeOSCComponents()
     {
-        if (debugMode) Debug.Log("[OSCManager] Initializing OSC components...");
+        if (debugMode) Debug.Log("[OSCManager] Initializing uOSC components...");
         
-        // Setup extOSC Receiver (for incoming messages from TouchDesigner)
+        // Setup uOSC Server (for incoming messages from TouchDesigner)
         SetupReceiver();
         
         // Setup uOSC Client (for outgoing messages to TouchDesigner)
@@ -90,17 +94,20 @@ public class OSCManager : MonoBehaviour
     
     private void SetupReceiver()
     {
-        // Get or create extOSC receiver
-        receiver = GetComponent<OSCReceiver>();
+        // Get or create uOSC server
+        receiver = GetComponent<uOscServer>();
         if (receiver == null)
         {
-            receiver = gameObject.AddComponent<OSCReceiver>();
-            if (debugMode) Debug.Log("[OSCManager] Created new OSCReceiver component");
+            receiver = gameObject.AddComponent<uOscServer>();
+            if (debugMode) Debug.Log("[OSCManager] Created new uOscServer component");
         }
         
         // Configure receiver settings
-        receiver.LocalPort = unityReceivePort;
-        receiver.AutoConnect = autoConnectReceiver;
+        receiver.port = unityReceivePort;
+        receiver.autoStart = autoStartReceiver;
+        
+        // Bind message handler
+        receiver.onDataReceived.AddListener(OnMessageReceived);
         
         if (debugMode) Debug.Log($"[OSCManager] Receiver configured on port {unityReceivePort}");
     }
@@ -192,20 +199,20 @@ public class OSCManager : MonoBehaviour
     
     #endregion
     
-    #region Public API - Receiving Messages (extOSC)
+    #region Public API - Receiving Messages (uOSC)
     
     /// <summary>
     /// Bind a callback to an incoming OSC address
     /// </summary>
-    public void BindReceiver(string address, UnityAction<OSCMessage> callback)
+    public void BindReceiver(string address, System.Action<Message> callback)
     {
-        if (!IsReceiverConnected)
+        if (callback == null)
         {
-            Debug.LogWarning($"[OSCManager] Cannot bind receiver - receiver not connected: {address}");
+            Debug.LogWarning($"[OSCManager] Cannot bind null callback for {address}");
             return;
         }
-        
-        receiver.Bind(address, callback);
+
+        messageHandlers[address] = callback;
         
         if (debugMode)
         {
@@ -218,14 +225,37 @@ public class OSCManager : MonoBehaviour
     /// </summary>
     public void UnbindReceiver(string address)
     {
-        if (receiver != null)
+        if (messageHandlers.ContainsKey(address))
         {
-            // Note: extOSC doesn't have a direct unbind by address method
-            // You would need to keep track of the bind object to unbind
+            messageHandlers.Remove(address);
             if (debugMode)
             {
-                Debug.Log($"[OSCManager] Unbind requested for address: {address}");
+                Debug.Log($"[OSCManager] Unbound receiver for address: {address}");
             }
+        }
+    }
+
+    private void OnMessageReceived(Message message)
+    {
+        if (logIncomingMessages)
+        {
+            Debug.Log($"[OSCManager] Received: {message.address} with {message.values?.Length ?? 0} values");
+        }
+        
+        // Route message to appropriate handler
+        if (messageHandlers.ContainsKey(message.address))
+        {
+            try
+            {
+                messageHandlers[message.address](message);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[OSCManager] Error handling message {message.address}: {e.Message}]");
+            }
+        }else if (debugMode)
+        {
+            Debug.Log($"[OSCManager] No handler found for address: {message.address}");
         }
     }
     

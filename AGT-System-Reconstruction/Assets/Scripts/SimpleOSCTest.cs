@@ -1,5 +1,5 @@
 using UnityEngine;
-using extOSC;
+using uOSC;
 using UnityEditor;
 
 /// <summary>
@@ -56,10 +56,10 @@ public class SimpleOSCTest : MonoBehaviour
         Debug.Log($"[SimpleOSCTest] Sent: {message}");
     }
     
-    void OnTestMessage(OSCMessage message)
+    void OnTestMessage(Message message)
     {
         messagesReceived++;
-        Debug.Log($"[SimpleOSCTest] Received from TouchDesigner: {message.Values[0].Value}");
+        Debug.Log($"[SimpleOSCTest] Received from TouchDesigner: {message.values[0]}");
     }
     
     // Manual test buttons
