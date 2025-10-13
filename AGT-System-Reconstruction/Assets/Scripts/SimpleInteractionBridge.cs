@@ -3,6 +3,8 @@ using UnityEngine;
 using UnityEngine.Events;
 using AgtOscData;
 using uOSC;
+using BodyTracking.DataModel;
+using Pose = BodyTracking.DataModel.Pose;
 
 /// <summary>
 /// Lightweight interaction bridge
@@ -169,8 +171,8 @@ public class SimpleInteractionBridge : MonoBehaviour
         }
     }
     
-    // TouchDesigner hand tracking data handlers
-    private Dictionary<int, Vector3> handPositions = new Dictionary<int, Vector3>();
+    // TouchDesigner hand tracking data handlers - now using Pose data model
+    private Dictionary<int, Pose> handPoses = new Dictionary<int, Pose>();
     private Dictionary<int, bool> handActiveStates = new Dictionary<int, bool>();
     
     void OnTouchDesignerHandActive(uOSC.Message message)
@@ -213,6 +215,7 @@ public class SimpleInteractionBridge : MonoBehaviour
     {
         // Extract hand ID from address (h1 or h2)
         int handId = message.address.Contains("h1") ? 1 : 2;
+        bool isLeftHand = handId == 1;
         
         // Handle different data types that TouchDesigner might send
         float value = 0f;
@@ -237,35 +240,41 @@ public class SimpleInteractionBridge : MonoBehaviour
             }
         }
         
-        // Get or create hand position
-        if (!handPositions.ContainsKey(handId))
+        // Get or create hand pose
+        if (!handPoses.ContainsKey(handId))
         {
-            handPositions[handId] = Vector3.zero;
+            handPoses[handId] = new Pose(true);
         }
         
-        Vector3 currentPos = handPositions[handId];
+        Pose currentPose = handPoses[handId];
+        
+        // Get current wrist position
+        BodyLandmark wristLandmark = isLeftHand ? BodyLandmark.LeftWrist : BodyLandmark.RightWrist;
+        Vector3 wristPos = currentPose.GetLandmark(wristLandmark);
         
         // Update the appropriate coordinate based on the message address
         if (message.address.Contains(":x"))
         {
-            currentPos.x = value;
+            wristPos.x = value;
         }
         else if (message.address.Contains(":y"))
         {
-            currentPos.y = value;
+            wristPos.y = value;
         }
         else if (message.address.Contains(":z"))
         {
-            currentPos.z = value;
+            wristPos.z = value;
         }
         
-        handPositions[handId] = currentPos;
+        // Update pose with new wrist position
+        currentPose.SetLandmark(wristLandmark, wristPos);
+        handPoses[handId] = currentPose;
         
         // Check if we have a complete position and hand is active
         if (handActiveStates.ContainsKey(handId) && handActiveStates[handId])
         {
-            // Convert 3D position to 2D screen coordinates (assuming z is depth)
-            Vector2 screenPos = new Vector2(currentPos.x, currentPos.y);
+            // Convert 3D wrist position to 2D screen coordinates (assuming z is depth)
+            Vector2 screenPos = new Vector2(wristPos.x, wristPos.y);
             
             // Create simple hand data (no finger count complexity)
             var handData = new HandInteractionData(
@@ -279,7 +288,7 @@ public class SimpleInteractionBridge : MonoBehaviour
             
             if (debugMode)
             {
-                Debug.Log($"[Bridge] TouchDesigner Hand {handId} position: ({currentPos.x:F2}, {currentPos.y:F2}, {currentPos.z:F2}) " +
+                Debug.Log($"[Bridge] TouchDesigner Hand {handId} ({wristLandmark}) position: ({wristPos.x:F2}, {wristPos.y:F2}, {wristPos.z:F2}) " +
                          $"(address: {message.address}, value: {value}, type: {message.values?[0]?.GetType()})");
             }
         }
@@ -332,6 +341,30 @@ public class SimpleInteractionBridge : MonoBehaviour
         {
             Debug.Log($"[Bridge] Sent custom event: {eventName} with intensity {intensity:F2}");
         }
+    }
+    
+    /// <summary>
+    /// Get current pose for a specific hand (using new Pose data model)
+    /// </summary>
+    /// <param name="handId">1 for left hand, 2 for right hand</param>
+    /// <returns>Current pose, or empty pose if hand not tracked</returns>
+    public Pose GetHandPose(int handId)
+    {
+        if (handPoses.ContainsKey(handId))
+        {
+            return handPoses[handId];
+        }
+        return new Pose(true);
+    }
+    
+    /// <summary>
+    /// Check if a specific hand is currently active
+    /// </summary>
+    /// <param name="handId">1 for left hand, 2 for right hand</param>
+    /// <returns>True if hand is active</returns>
+    public bool IsHandActive(int handId)
+    {
+        return handActiveStates.ContainsKey(handId) && handActiveStates[handId];
     }
     
     #endregion

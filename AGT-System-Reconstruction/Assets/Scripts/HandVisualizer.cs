@@ -2,6 +2,8 @@ using UnityEngine;
 using UnityEngine.UI;
 using AgtOscData;
 using TMPro;
+using BodyTracking.DataModel;
+using Pose = BodyTracking.DataModel.Pose;
 
 /// <summary>
 /// Visualizes hand position data from TouchDesigner in Unity
@@ -41,7 +43,8 @@ public class HandVisualizer : MonoBehaviour
     private TextMeshProUGUI confidenceText;
     private GameObject handModel;
     
-    // Hand data
+    // Hand data - now using Pose data model internally
+    private Pose currentHandPose;
     private Vector2 currentHandPosition;
     private int currentFingerCount;
     private float currentConfidence;
@@ -53,6 +56,9 @@ public class HandVisualizer : MonoBehaviour
     
     void Start()
     {
+        // Initialize pose
+        currentHandPose = new Pose(true);
+        
         // Get system references
         if (interactionBridge == null)
             interactionBridge = FindObjectOfType<SimpleInteractionBridge>();
@@ -74,7 +80,7 @@ public class HandVisualizer : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log("[HandVisualizer] Hand visualizer initialized");
+            Debug.Log("[HandVisualizer] Hand visualizer initialized (using Pose data model)");
         }
     }
     
@@ -156,11 +162,16 @@ public class HandVisualizer : MonoBehaviour
     
     void OnHandDataReceived(SimpleInteractionBridge.HandInteractionData handData)
     {
-        // Update hand data
+        // Update legacy hand data
         currentHandPosition = handData.position;
         currentFingerCount = handData.fingers;
         currentConfidence = handData.confidence;
         currentHandValid = handData.isValid;
+        
+        // Update Pose data model - store hand position as wrist landmark
+        // Assume left hand for now (could be enhanced to track both hands)
+        Vector3 wristPos = new Vector3(handData.position.x, handData.position.y, 0f);
+        currentHandPose.SetLandmark(BodyLandmark.LeftWrist, wristPos);
         
         // Update visualization
         UpdateHandVisualization();
@@ -168,7 +179,8 @@ public class HandVisualizer : MonoBehaviour
         if (debugMode)
         {
             string coordType = useNormalizedCoordinates ? "normalized" : "screen";
-            Debug.Log($"[HandVisualizer] Hand data: {currentFingerCount} fingers at ({currentHandPosition.x:F3}, {currentHandPosition.y:F3}) {coordType}, valid: {currentHandValid}");
+            Debug.Log($"[HandVisualizer] Hand data: {currentFingerCount} fingers at ({currentHandPosition.x:F3}, {currentHandPosition.y:F3}) {coordType}, " +
+                     $"Pose: {currentHandPose.GetLandmark(BodyLandmark.LeftWrist)}, valid: {currentHandValid}");
         }
     }
     
@@ -354,6 +366,22 @@ public class HandVisualizer : MonoBehaviour
     public bool IsHandVisible()
     {
         return isHandVisible && currentHandValid;
+    }
+    
+    /// <summary>
+    /// Get current hand pose (using new Pose data model)
+    /// </summary>
+    public Pose GetCurrentHandPose()
+    {
+        return currentHandPose;
+    }
+    
+    /// <summary>
+    /// Get specific landmark from current hand pose
+    /// </summary>
+    public Vector3 GetLandmark(BodyLandmark landmark)
+    {
+        return currentHandPose.GetLandmark(landmark);
     }
     
     // Debug visualization

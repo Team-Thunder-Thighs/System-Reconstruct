@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using BodyTracking.DataModel;
+using Pose = BodyTracking.DataModel.Pose;
 
 [System.Serializable]
 public class UIElementConfig
@@ -43,8 +45,14 @@ public class UIOverlapDetector : MonoBehaviour
     private Dictionary<string, bool> overlapStates = new Dictionary<string, bool>();
     private Dictionary<string, RectTransform> uiElementMap = new Dictionary<string, RectTransform>();
     
+    // Hand tracking using Pose data model
+    private Pose currentHandPose;
+    
     void Start()
     {
+        // Initialize Pose data model
+        currentHandPose = new Pose(true);
+        
         // Auto-find UI elements if not manually assigned
         if (uiElements == null || uiElements.Length == 0)
         {
@@ -80,7 +88,7 @@ public class UIOverlapDetector : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"[UIOverlapDetector] Found {uiElementMap.Count} UI elements to monitor");
+            Debug.Log($"[UIOverlapDetector] Found {uiElementMap.Count} UI elements to monitor (using Pose data model)");
             if (sendToTouchDesigner && interactionBridge != null)
             {
                 Debug.Log($"[UIOverlapDetector] TouchDesigner communication enabled via SimpleInteractionBridge");
@@ -108,9 +116,14 @@ public class UIOverlapDetector : MonoBehaviour
     
     public void CheckHandOverlap(Vector2 handScreenPosition)
     {
+        // Update Pose data model with hand position
+        Vector3 wristPos = new Vector3(handScreenPosition.x, handScreenPosition.y, 0f);
+        currentHandPose.SetLandmark(BodyLandmark.LeftWrist, wristPos);
+        
         if (debugMode)
         {
-            Debug.Log($"[UIOverlapDetector] Checking overlap at hand position: ({handScreenPosition.x:F2}, {handScreenPosition.y:F2})");
+            Debug.Log($"[UIOverlapDetector] Checking overlap at hand position: ({handScreenPosition.x:F2}, {handScreenPosition.y:F2}), " +
+                     $"Pose wrist: {currentHandPose.GetLandmark(BodyLandmark.LeftWrist)}");
             Debug.Log($"[UIOverlapDetector] Found {uiElementMap.Count} UI elements to check");
         }
         
@@ -281,5 +294,21 @@ public class UIOverlapDetector : MonoBehaviour
                 Debug.Log($"[UIOverlapDetector] Sent to TouchDesigner via SimpleInteractionBridge: ui_overlap_{elementId} = {messageText}");
             }
         }
+    }
+    
+    /// <summary>
+    /// Get current hand pose (using new Pose data model)
+    /// </summary>
+    public Pose GetCurrentHandPose()
+    {
+        return currentHandPose;
+    }
+    
+    /// <summary>
+    /// Get specific landmark from current hand pose
+    /// </summary>
+    public Vector3 GetLandmark(BodyLandmark landmark)
+    {
+        return currentHandPose.GetLandmark(landmark);
     }
 }
