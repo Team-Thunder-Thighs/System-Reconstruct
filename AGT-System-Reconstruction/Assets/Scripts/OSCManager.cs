@@ -17,7 +17,7 @@ public class OSCManager : MonoBehaviour
     [SerializeField] private float dataTransmissionInterval = 0f;
     
     [Header("Incoming Messages (uOSC - TouchDesigner to Unity)")]
-    [SerializeField] private int unityReceivePort = 333333;
+    [SerializeField] private int unityReceivePort = 3333;
     [SerializeField] private bool autoStartReceiver = true;
     
     [Header("Debug Settings")]

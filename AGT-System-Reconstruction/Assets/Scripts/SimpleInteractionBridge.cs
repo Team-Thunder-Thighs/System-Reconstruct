@@ -18,7 +18,7 @@ public class SimpleInteractionBridge : MonoBehaviour
     public UnityEvent<string, float> OnGameEvent;
     
     [Header("Settings")]
-    [SerializeField] private bool debugMode = false; // Disabled to reduce console spam
+    [SerializeField] private bool debugMode = true; // Enabled for debugging hand tracking
     
     // data structures for events
     [System.Serializable]
@@ -43,9 +43,14 @@ public class SimpleInteractionBridge : MonoBehaviour
         SetupOSCHandlers();
         SetupTouchDesignerHandlers();
         
+        // TEMPORARY: Force hand active states for debugging
+        handActiveStates[1] = true; // Left hand
+        handActiveStates[2] = true; // Right hand
+        
         if (debugMode)
         {
             Debug.Log("[SimpleInteractionBridge] Lightweight interaction bridge initialized");
+            Debug.Log("[Bridge] TEMPORARY: Hand active states forced to true for debugging");
         }
     }
     
@@ -62,6 +67,9 @@ public class SimpleInteractionBridge : MonoBehaviour
             OSCManager.Instance.BindReceiver("/h2:pinch_midpoint:x", OnTouchDesignerHandPosition);
             OSCManager.Instance.BindReceiver("/h2:pinch_midpoint:y", OnTouchDesignerHandPosition);
             OSCManager.Instance.BindReceiver("/h2:pinch_midpoint:z", OnTouchDesignerHandPosition);
+            
+            // TouchDesigner body pose data (1D array format)
+            OSCManager.Instance.BindReceiver("/mediapipe/pose/world", OnTouchDesignerBodyPose);
             
         }
     }
@@ -85,7 +93,6 @@ public class SimpleInteractionBridge : MonoBehaviour
         // Note: We'll handle these manually in OnMessageReceived since they have complex addresses
     }
     
-    #region OSC Handlers
     
     void OnHandDataReceived(OSCMessage message)
     {
@@ -273,13 +280,13 @@ public class SimpleInteractionBridge : MonoBehaviour
         // Check if we have a complete position and hand is active
         if (handActiveStates.ContainsKey(handId) && handActiveStates[handId])
         {
-            // Convert 3D wrist position to 2D screen coordinates (assuming z is depth)
-            Vector2 screenPos = new Vector2(wristPos.x, wristPos.y);
+            // Pass TouchDesigner coordinates as-is (they are normalized coordinates, not screen coordinates)
+            Vector2 touchDesignerPos = new Vector2(wristPos.x, wristPos.y);
             
             // Create simple hand data (no finger count complexity)
             var handData = new HandInteractionData(
                 1, // Simple finger count - always 1 for now
-                screenPos,
+                touchDesignerPos, // TouchDesigner normalized coordinates
                 1f, // Default confidence
                 true
             );
@@ -294,8 +301,146 @@ public class SimpleInteractionBridge : MonoBehaviour
         }
     }
     
+    /// <summary>
+    /// Handle TouchDesigner body pose data in 1D array format
+    /// Expected format: [index_1, x, y, z, index_2, x, y, z, ..., index_n, x, y, z]
+    /// Array can have variable length (up to 33 groups = 132 elements)
+    /// Filter and process only hand-related landmarks (LeftWrist=15, RightWrist=16)
+    /// </summary>
+    void OnTouchDesignerBodyPose(uOSC.Message message)
+    {
+        if (message.values == null || message.values.Length == 0)
+        {
+            return;
+        }
+        
+        try
+        {
+            // Parse the 1D array structure: each group is [index, x, y, z] = 4 values
+            int landmarkCount = message.values.Length / 4;
+            
+            if (debugMode)
+            {
+                Debug.Log($"[Bridge] Body pose received: {landmarkCount} landmarks, {message.values.Length} total values");
+            }
+            
+            // Process each landmark and filter for hand data
+            for (int i = 0; i < landmarkCount; i++)
+            {
+                int baseIndex = i * 4;
+                
+                // Extract landmark data: [index, x, y, z]
+                int landmarkIndex = GetIntFromOSCValue(message.values[baseIndex]);
+                float x = GetFloatFromOSCValue(message.values[baseIndex + 1]);
+                float y = GetFloatFromOSCValue(message.values[baseIndex + 2]);
+                float z = GetFloatFromOSCValue(message.values[baseIndex + 3]);
+                
+                // Filter for hand landmarks only
+                if (landmarkIndex == 15) // LeftWrist
+                {
+                    if (debugMode)
+                    {
+                        Debug.Log($"[Bridge] Found LeftWrist (15) at ({x:F3}, {y:F3}, {z:F3})");
+                    }
+                    ProcessHandLandmark(1, true, x, y, z);
+                }
+                else if (landmarkIndex == 16) // RightWrist
+                {
+                    if (debugMode)
+                    {
+                        Debug.Log($"[Bridge] Found RightWrist (16) at ({x:F3}, {y:F3}, {z:F3})");
+                    }
+                    ProcessHandLandmark(2, false, x, y, z);
+                }
+                else if (debugMode && landmarkIndex >= 0 && landmarkIndex <= 32)
+                {
+                    // Log other landmarks for debugging
+                    Debug.Log($"[Bridge] Landmark {landmarkIndex} at ({x:F3}, {y:F3}, {z:F3}) - not a wrist");
+                }
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[Bridge] Error parsing body pose message: {e.Message}");
+        }
+    }
     
-    #endregion
+    /// <summary>
+    /// Process hand landmark data and trigger hand interaction
+    /// </summary>
+    void ProcessHandLandmark(int handId, bool isLeftHand, float x, float y, float z)
+    {
+        // Get or create hand pose
+        if (!handPoses.ContainsKey(handId))
+        {
+            handPoses[handId] = new Pose(true);
+        }
+        
+        Pose currentPose = handPoses[handId];
+        BodyLandmark wristLandmark = isLeftHand ? BodyLandmark.LeftWrist : BodyLandmark.RightWrist;
+        
+        // Update wrist position
+        Vector3 wristPos = new Vector3(x, y, z);
+        currentPose.SetLandmark(wristLandmark, wristPos);
+        handPoses[handId] = currentPose;
+        
+        // Check if hand is active and trigger interaction
+        bool isHandActive = handActiveStates.ContainsKey(handId) && handActiveStates[handId];
+        
+        if (debugMode)
+        {
+            Debug.Log($"[Bridge] Hand {handId} ({wristLandmark}) at ({wristPos.x:F2}, {wristPos.y:F2}, {wristPos.z:F2}) - Active: {isHandActive}");
+        }
+        
+        if (isHandActive)
+        {
+            // Pass TouchDesigner coordinates as-is (they are normalized coordinates, not screen coordinates)
+            Vector2 touchDesignerPos = new Vector2(wristPos.x, wristPos.y);
+            
+            // Create hand interaction data
+            var handData = new HandInteractionData(
+                1, // Simple finger count
+                touchDesignerPos, // TouchDesigner normalized coordinates
+                1f, // Default confidence
+                true
+            );
+            
+            OnHandInteraction?.Invoke(handData);
+            
+            if (debugMode)
+            {
+                Debug.Log($"[Bridge] ✅ Hand interaction triggered for Hand {handId} at TouchDesigner position ({touchDesignerPos.x:F2}, {touchDesignerPos.y:F2})");
+            }
+        }
+        else if (debugMode)
+        {
+            Debug.Log($"[Bridge] ❌ Hand {handId} not active - no interaction triggered");
+        }
+    }
+    
+    /// <summary>
+    /// Helper to safely extract int from OSC value
+    /// </summary>
+    private int GetIntFromOSCValue(object value)
+    {
+        if (value is int i) return i;
+        if (value is float f) return (int)f;
+        if (value is double d) return (int)d;
+        if (value is bool b) return b ? 1 : 0;
+        return 0;
+    }
+    
+    /// <summary>
+    /// Helper to safely extract float from OSC value
+    /// </summary>
+    private float GetFloatFromOSCValue(object value)
+    {
+        if (value is float f) return f;
+        if (value is double d) return (float)d;
+        if (value is int i) return i;
+        if (value is bool b) return b ? 1f : 0f;
+        return 0f;
+    }
     
     #region Public API for Sending
     

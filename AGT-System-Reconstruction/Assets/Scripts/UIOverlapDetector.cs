@@ -34,6 +34,10 @@ public class UIOverlapDetector : MonoBehaviour
     [SerializeField] private AudioSource audioSource;
     [SerializeField] private AudioClip defaultOverlapSound;
     
+    [Header("Coordinate System")]
+    [SerializeField] private bool useNormalizedCoordinates = true; // TouchDesigner sends normalized coords (X: -0.5 to 0.5, Y: -0.9 to -0.3)
+    [SerializeField] private bool flipY = false; // Disabled - Y movement is already correct
+    
     [Header("TouchDesigner Communication")]
     [SerializeField] private bool sendToTouchDesigner = true;
     [SerializeField] private SimpleInteractionBridge interactionBridge;
@@ -86,6 +90,20 @@ public class UIOverlapDetector : MonoBehaviour
             interactionBridge = FindObjectOfType<SimpleInteractionBridge>();
         }
         
+        // Subscribe to hand interaction events
+        if (interactionBridge != null)
+        {
+            interactionBridge.OnHandInteraction.AddListener(OnHandDataReceived);
+            if (debugMode)
+            {
+                Debug.Log("[UIOverlapDetector] ✅ Subscribed to hand interaction events");
+            }
+        }
+        else
+        {
+            Debug.LogError("[UIOverlapDetector] ❌ SimpleInteractionBridge not found! UI overlap detection will not work.");
+        }
+        
         if (debugMode)
         {
             Debug.Log($"[UIOverlapDetector] Found {uiElementMap.Count} UI elements to monitor (using Pose data model)");
@@ -114,15 +132,32 @@ public class UIOverlapDetector : MonoBehaviour
         uiElements = allElements.ToArray();
     }
     
-    public void CheckHandOverlap(Vector2 handScreenPosition)
+    /// <summary>
+    /// Handle hand interaction data from SimpleInteractionBridge
+    /// </summary>
+    void OnHandDataReceived(SimpleInteractionBridge.HandInteractionData handData)
     {
-        // Update Pose data model with hand position
-        Vector3 wristPos = new Vector3(handScreenPosition.x, handScreenPosition.y, 0f);
+        if (debugMode)
+        {
+            Debug.Log($"[UIOverlapDetector] ✅ Hand data received: position=({handData.position.x:F2}, {handData.position.y:F2}), valid={handData.isValid}");
+        }
+        
+        // Check for UI overlap
+        CheckHandOverlap(handData.position);
+    }
+    
+    public void CheckHandOverlap(Vector2 handPosition)
+    {
+        // Convert TouchDesigner coordinates to screen coordinates
+        Vector2 screenPosition = ConvertToScreenCoordinates(handPosition);
+        
+        // Update Pose data model with converted hand position
+        Vector3 wristPos = new Vector3(screenPosition.x, screenPosition.y, 0f);
         currentHandPose.SetLandmark(BodyLandmark.LeftWrist, wristPos);
         
         if (debugMode)
         {
-            Debug.Log($"[UIOverlapDetector] Checking overlap at hand position: ({handScreenPosition.x:F2}, {handScreenPosition.y:F2}), " +
+            Debug.Log($"[UIOverlapDetector] Checking overlap at TouchDesigner position: ({handPosition.x:F2}, {handPosition.y:F2}) -> Screen: ({screenPosition.x:F2}, {screenPosition.y:F2}), " +
                      $"Pose wrist: {currentHandPose.GetLandmark(BodyLandmark.LeftWrist)}");
             Debug.Log($"[UIOverlapDetector] Found {uiElementMap.Count} UI elements to check");
         }
@@ -132,15 +167,15 @@ public class UIOverlapDetector : MonoBehaviour
             string elementId = kvp.Key;
             RectTransform element = kvp.Value;
             
-            bool isOverlapping = IsPointInRectTransform(handScreenPosition, element);
+            bool isOverlapping = IsPointInRectTransform(screenPosition, element);
             bool wasOverlapping = overlapStates[elementId];
             
             if (debugMode)
             {
                 Vector2 localPoint;
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                    element, handScreenPosition, null, out localPoint);
-                Debug.Log($"[UIOverlapDetector] Element '{elementId}': screen({handScreenPosition.x:F2},{handScreenPosition.y:F2}) -> local({localPoint.x:F2},{localPoint.y:F2}), rect({element.rect.x:F2},{element.rect.y:F2},{element.rect.width:F2},{element.rect.height:F2}), overlapping: {isOverlapping}");
+                    element, screenPosition, null, out localPoint);
+                Debug.Log($"[UIOverlapDetector] Element '{elementId}': screen({screenPosition.x:F2},{screenPosition.y:F2}) -> local({localPoint.x:F2},{localPoint.y:F2}), rect({element.rect.x:F2},{element.rect.y:F2},{element.rect.width:F2},{element.rect.height:F2}), overlapping: {isOverlapping}");
             }
             
             if (isOverlapping && !wasOverlapping)
@@ -310,5 +345,48 @@ public class UIOverlapDetector : MonoBehaviour
     public Vector3 GetLandmark(BodyLandmark landmark)
     {
         return currentHandPose.GetLandmark(landmark);
+    }
+    
+    void OnDestroy()
+    {
+        // Unsubscribe from hand interaction events
+        if (interactionBridge != null)
+        {
+            interactionBridge.OnHandInteraction.RemoveListener(OnHandDataReceived);
+        }
+    }
+    
+    /// <summary>
+    /// Convert TouchDesigner coordinates to Unity screen coordinates
+    /// Uses the same conversion logic as HandVisualizer
+    /// </summary>
+    Vector2 ConvertToScreenCoordinates(Vector2 inputPosition)
+    {
+        Vector2 screenPosition = inputPosition;
+        
+        // Convert normalized coordinates to screen coordinates if needed
+        if (useNormalizedCoordinates)
+        {
+            // TouchDesigner sends normalized coordinates in range:
+            // X: -0.5 to 0.5 (left to right)
+            // Y: -0.9 to -0.3 (top to bottom)
+            
+            // Convert X from -0.5..0.5 to 0..1, then to screen
+            float normalizedX = (inputPosition.x + 0.5f); // -0.5..0.5 -> 0..1
+            screenPosition.x = normalizedX * Screen.width;
+            
+            // Convert Y from -0.9..-0.3 to 0..1, then to screen (SIMPLE INVERT)
+            float normalizedY = ((inputPosition.y + 0.9f) / 0.6f); // -0.9..-0.3 -> 0..1
+            normalizedY = Mathf.Clamp01(normalizedY); // Ensure 0..1 range
+            normalizedY = 1f - normalizedY; // Invert the Y coordinate
+            screenPosition.y = normalizedY * Screen.height;
+            
+            if (flipY)
+            {
+                screenPosition.y = Screen.height - screenPosition.y;
+            }
+        }
+        
+        return screenPosition;
     }
 }

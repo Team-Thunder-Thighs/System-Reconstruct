@@ -25,8 +25,8 @@ public class HandVisualizer : MonoBehaviour
     [SerializeField] private float cursorSize = 50f;
     
     [Header("Coordinate System")]
-    [SerializeField] private bool useNormalizedCoordinates = true; // TouchDesigner sends normalized coords (0-1)
-    [SerializeField] private bool flipY = false; // Flip Y coordinate if needed
+    [SerializeField] private bool useNormalizedCoordinates = true; // TouchDesigner sends normalized coords (X: -0.5 to 0.5, Y: -0.9 to -0.3)
+    [SerializeField] private bool flipY = false; // Disabled - Y movement is already correct
     
     [Header("Hand Representation")]
     [SerializeField] private bool showHandRepresentation = false;
@@ -249,8 +249,19 @@ public class HandVisualizer : MonoBehaviour
         // Convert normalized coordinates to screen coordinates if needed
         if (useNormalizedCoordinates)
         {
-            screenPosition.x *= Screen.width;
-            screenPosition.y *= Screen.height;
+            // TouchDesigner sends normalized coordinates in range:
+            // X: -0.5 to 0.5 (left to right)
+            // Y: -0.9 to -0.3 (top to bottom)
+            
+            // Convert X from -0.5..0.5 to 0..1, then to screen
+            float normalizedX = (inputPosition.x + 0.5f); // -0.5..0.5 -> 0..1
+            screenPosition.x = normalizedX * Screen.width;
+            
+            // Convert Y from -0.9..-0.3 to 0..1, then to screen (SIMPLE INVERT)
+            float normalizedY = ((inputPosition.y + 0.9f) / 0.6f); // -0.9..-0.3 -> 0..1
+            normalizedY = Mathf.Clamp01(normalizedY); // Ensure 0..1 range
+            normalizedY = 1f - normalizedY; // Invert the Y coordinate
+            screenPosition.y = normalizedY * Screen.height;
             
             if (flipY)
             {
@@ -279,8 +290,19 @@ public class HandVisualizer : MonoBehaviour
         // Convert normalized coordinates to screen coordinates if needed
         if (useNormalizedCoordinates)
         {
-            screenPosition.x *= Screen.width;
-            screenPosition.y *= Screen.height;
+            // TouchDesigner sends normalized coordinates in range:
+            // X: -0.5 to 0.5 (left to right)
+            // Y: -0.9 to -0.3 (top to bottom)
+            
+            // Convert X from -0.5..0.5 to 0..1, then to screen
+            float normalizedX = (inputPosition.x + 0.5f); // -0.5..0.5 -> 0..1
+            screenPosition.x = normalizedX * Screen.width;
+            
+            // Convert Y from -0.9..-0.3 to 0..1, then to screen (SIMPLE INVERT)
+            float normalizedY = ((inputPosition.y + 0.9f) / 0.6f); // -0.9..-0.3 -> 0..1
+            normalizedY = Mathf.Clamp01(normalizedY); // Ensure 0..1 range
+            normalizedY = 1f - normalizedY; // Invert the Y coordinate
+            screenPosition.y = normalizedY * Screen.height;
             
             if (flipY)
             {

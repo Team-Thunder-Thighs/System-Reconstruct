@@ -122,56 +122,6 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &77072229
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 77072231}
-  - component: {fileID: 77072230}
-  m_Layer: 0
-  m_Name: HandVisualizationTest
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 0
---- !u!114 &77072230
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 77072229}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 838011d898d1f4b1ca054afd659edc5d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  enableTestMode: 0
-  simulateHandMovement: 0
-  testSpeed: 100
-  interactionBridge: {fileID: 0}
-  handVisualizer: {fileID: 0}
-  testTime: 0
---- !u!4 &77072231
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 77072229}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 944.15704, y: 272.78662, z: -3.084962}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -618,6 +568,65 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 647980998}
   m_CullTransparentMesh: 1
+--- !u!1 &846296380
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 846296382}
+  - component: {fileID: 846296381}
+  m_Layer: 0
+  m_Name: deb
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &846296381
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 846296380}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 09affddec1d1f4f659b523c9bc304688, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  enableDebugMode: 1
+  showOnScreenDebug: 1
+  logToConsole: 1
+  currentRawPosition: {x: 0, y: 0}
+  currentScreenPosition: {x: 0, y: 0}
+  currentUIPosition: {x: 0, y: 0}
+  minX: 3.4028235e+38
+  maxX: -3.4028235e+38
+  minY: 3.4028235e+38
+  maxY: -3.4028235e+38
+  lastPosition: {x: 0, y: 0}
+  movementDirection: {x: 0, y: 0}
+  isMoving: 0
+  debugText: {fileID: 0}
+  debugCanvas: {fileID: 0}
+--- !u!4 &846296382
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 846296380}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 849.378, y: 627.9933, z: -4.8906527}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &885100666
 GameObject:
   m_ObjectHideFlags: 0
@@ -661,7 +670,7 @@ MonoBehaviour:
   showHandRepresentation: 0
   handModelPrefab: {fileID: 0}
   handParent: {fileID: 0}
-  debugMode: 0
+  debugMode: 1
 --- !u!4 &885100668
 Transform:
   m_ObjectHideFlags: 0
@@ -725,10 +734,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 800, y: 600}
+  m_ReferenceResolution: {x: 1920, y: 1080}
   m_ScreenMatchMode: 0
   m_MatchWidthOrHeight: 0
   m_PhysicalUnit: 3
@@ -816,7 +825,7 @@ MonoBehaviour:
   - {fileID: 647981000}
   - {fileID: 1872030241}
   - {fileID: 2086906546}
-  debugMode: 1
+  debugMode: 0
 --- !u!4 &967747665
 Transform:
   m_ObjectHideFlags: 0
@@ -866,7 +875,7 @@ MonoBehaviour:
   - {fileID: 647980999}
   - {fileID: 1872030240}
   - {fileID: 2086906545}
-  debugMode: 1
+  debugMode: 0
   defaultOverlapColor: {r: 0, g: 1, b: 0, a: 1}
   defaultNormalColor: {r: 1, g: 1, b: 1, a: 1}
   elementConfigs:
@@ -1320,7 +1329,7 @@ SceneRoots:
   - {fileID: 902797258}
   - {fileID: 378506566}
   - {fileID: 885100668}
-  - {fileID: 77072231}
   - {fileID: 1817128753}
   - {fileID: 1057647698}
   - {fileID: 967747665}
+  - {fileID: 846296382}
