@@ -264,11 +264,11 @@ public class OSCMessageAnalyzer : MonoBehaviour
                         }
                     }
                 }
-                // Detect 2D array structure (variable length, each element is [index, x, y, z])
+                // Detect 1D array structure (variable length, each group is [index, x, y, z])
                 else if (log.valueCount % 4 == 0 && log.valueCount >= 4)
                 {
                     int landmarkCount = log.valueCount / 4;
-                    sb.AppendLine($"\n  📊 Detected 2D array - Possible body pose data ({landmarkCount} landmarks × 4 values):");
+                    sb.AppendLine($"\n  📊 Detected 1D array - Possible body pose data ({landmarkCount} landmarks × 4 values):");
                     sb.AppendLine("  Structure breakdown:");
                     for (int i = 0; i < landmarkCount; i++)
                     {
