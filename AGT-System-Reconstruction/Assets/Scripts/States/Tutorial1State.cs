@@ -56,6 +56,7 @@ public class Tutorial1State : IGameState
     private bool[] completedQuadrants = new bool[5]; // Index 0 unused, 1-4 for quadrants
     private int completedCount = 0;
     
+    
     public void Enter(GameManager manager)
     {
         this.manager = manager;
