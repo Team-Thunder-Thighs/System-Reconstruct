@@ -47,7 +47,7 @@ public class OutputFacade : MonoBehaviour
     
     [Header("OSC Client Configuration")]
     [SerializeField] private string targetIP = "127.0.0.1";
-    [SerializeField] private int targetPort = 7000;
+    [SerializeField] private int targetPort = 8000;
     [SerializeField] private int maxQueueSize = 100;
     [SerializeField] private float dataTransmissionInterval = 0f;
     
@@ -292,7 +292,7 @@ public class OutputFacade : MonoBehaviour
     /// <param name="intensity">Intensity level (0-1)</param>
     public void SendCustomTrigger(string triggerName, float intensity = 1f)
     {
-        SendWithRetry("/trigger", triggerName, intensity);
+        SendWithRetry("/project1/oscin1", triggerName, intensity);
     }
     
     /// <summary>

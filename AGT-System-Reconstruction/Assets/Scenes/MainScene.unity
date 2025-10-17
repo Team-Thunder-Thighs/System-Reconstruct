@@ -1349,6 +1349,60 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1074929131}
   m_CullTransparentMesh: 1
+--- !u!1 &1106025113
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1106025115}
+  - component: {fileID: 1106025114}
+  m_Layer: 0
+  m_Name: Outputfacade
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1106025114
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1106025113}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a484c068951f45019c6c4ab8fdabe7a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  targetIP: 127.0.0.1
+  targetPort: 8000
+  maxQueueSize: 100
+  dataTransmissionInterval: 0
+  enableRetryLogic: 1
+  maxRetryAttempts: 3
+  retryDelaySeconds: 0.1
+  debugMode: 0
+  logOutgoingMessages: 0
+  logConnectionStatus: 0
+--- !u!4 &1106025115
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1106025113}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 956.3009, y: 588.3362, z: -6.1327367}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1519119135
 GameObject:
   m_ObjectHideFlags: 0
@@ -2169,3 +2223,4 @@ SceneRoots:
   - {fileID: 1873440083}
   - {fileID: 93437862}
   - {fileID: 1817901337}
+  - {fileID: 1106025115}
