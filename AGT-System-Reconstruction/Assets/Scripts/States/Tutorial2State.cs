@@ -10,18 +10,25 @@ using Pose = BodyTracking.DataModel.Pose;
 /// 
 /// Flow:
 /// Tutorial1 → Tutorial2 (raise hands again) → MainMenu
+/// 
+/// IMPORTANT: Uses screen coordinates from SimpleInteractionBridge to align with HandVisualizer cursor.
 /// </summary>
 public class Tutorial2State : IGameState
 {
     private GameManager manager;
     private UIManager uiManager;
+    private SimpleInteractionBridge interactionBridge;
     private InputFacade inputFacade;
     private bool isInitialized = false;
     
-    // Hand tracking
-    private Pose currentPose;
+    // Hand tracking - now using screen coordinates from SimpleInteractionBridge
+    private Vector2 handScreenPosition;
+    private bool hasHandData = false;
     private float handCheckInterval = 0.2f; // Check every 0.2 seconds
     private float lastCheckTime = 0f;
+    
+    // For detecting hands above head, we still need pose data for nose position
+    private Pose currentPose;
     
     // Success tracking
     private float successDuration = 2f; // Hold hands up for 2 seconds
@@ -36,12 +43,23 @@ public class Tutorial2State : IGameState
         
         // Get references
         inputFacade = manager.GetInputFacade();
+        interactionBridge = UnityEngine.Object.FindObjectOfType<SimpleInteractionBridge>();
         uiManager = UIManager.Instance;
         
-        // Subscribe to pose data
+        // Subscribe to both pose data (for nose position) and hand interaction data (for screen coords)
         if (inputFacade != null)
         {
             inputFacade.OnPoseDataReceived += OnPoseDataReceived;
+        }
+        
+        if (interactionBridge != null)
+        {
+            interactionBridge.OnHandInteraction.AddListener(OnHandInteractionReceived);
+            DebugLogger.LogInfo("[Tutorial2State] Subscribed to SimpleInteractionBridge hand events");
+        }
+        else
+        {
+            DebugLogger.LogError("[Tutorial2State] SimpleInteractionBridge not found!");
         }
         
         // Show tutorial UI
@@ -50,6 +68,7 @@ public class Tutorial2State : IGameState
             uiManager.ShowTutorialText("Tutorial 2:\nYou have exited Tutorial 1 and entered Tutorial 2!\n\nRaise both hands above your head again\nto return to Main Menu");
         }
         
+        hasHandData = false;
         isInitialized = true;
         
         // Send signal to TouchDesigner
@@ -110,6 +129,11 @@ public class Tutorial2State : IGameState
             inputFacade.OnPoseDataReceived -= OnPoseDataReceived;
         }
         
+        if (interactionBridge != null)
+        {
+            interactionBridge.OnHandInteraction.RemoveListener(OnHandInteractionReceived);
+        }
+        
         // Clear UI
         if (uiManager != null)
         {
@@ -137,20 +161,30 @@ public class Tutorial2State : IGameState
         currentPose = newPose;
     }
     
+    /// <summary>
+    /// Receive hand interaction data from SimpleInteractionBridge (same as HandVisualizer)
+    /// This ensures cursor and hand detection are perfectly aligned
+    /// </summary>
+    private void OnHandInteractionReceived(SimpleInteractionBridge.HandInteractionData handData)
+    {
+        handScreenPosition = handData.position;
+        hasHandData = handData.isValid;
+    }
+    
     private void CheckHandPosition()
     {
-        if (!currentPose.IsValid())
+        if (!currentPose.IsValid() || !hasHandData)
         {
             ResetSuccess();
             return;
         }
         
-        // Get hand positions
+        // Get head position (nose) for reference from pose data
+        Vector3 nose = currentPose.GetLandmark(BodyLandmark.Nose);
+        
+        // Get hand positions from pose data (for Y comparison)
         Vector3 leftWrist = currentPose.GetLandmark(BodyLandmark.LeftWrist);
         Vector3 rightWrist = currentPose.GetLandmark(BodyLandmark.RightWrist);
-        
-        // Get head position (nose) for reference
-        Vector3 nose = currentPose.GetLandmark(BodyLandmark.Nose);
         
         // Check if we have valid landmarks
         bool hasLeftHand = leftWrist != Vector3.zero;
@@ -163,8 +197,9 @@ public class Tutorial2State : IGameState
             return;
         }
         
-        // Check if both hands are above head
-        bool leftHandAboveHead = hasLeftHand && leftWrist.y < nose.y; // Y is inverted in normalized coords
+        // Check if both hands are above head (using world/normalized Y coordinates)
+        // Note: Y is inverted in normalized coords, so lower Y = higher position
+        bool leftHandAboveHead = hasLeftHand && leftWrist.y < nose.y;
         bool rightHandAboveHead = hasRightHand && rightWrist.y < nose.y;
         
         bool bothHandsUp = leftHandAboveHead && rightHandAboveHead;
@@ -176,7 +211,7 @@ public class Tutorial2State : IGameState
                 // Just started holding hands up
                 isHoldingHandsUp = true;
                 successStartTime = Time.time;
-                DebugLogger.LogInfo("[Tutorial2State] Both hands raised above head!");
+                DebugLogger.LogInfo($"[Tutorial2State] Both hands raised above head! Screen pos: ({handScreenPosition.x:F1}, {handScreenPosition.y:F1})");
             }
         }
         else

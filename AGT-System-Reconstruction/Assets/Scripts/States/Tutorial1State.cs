@@ -17,17 +17,22 @@ using Pose = BodyTracking.DataModel.Pose;
 /// 
 /// Flow:
 /// MainMenu → Tutorial1 (point to quadrants) → Tutorial2
+/// 
+/// IMPORTANT: Uses screen coordinates from SimpleInteractionBridge to align with HandVisualizer cursor.
 /// </summary>
 public class Tutorial1State : IGameState
 {
     private GameManager manager;
     private UIManager uiManager;
-    private InputFacade inputFacade;
+    private SimpleInteractionBridge interactionBridge;
     private OutputFacade outputFacade;
     private bool isInitialized = false;
     
-    // Hand tracking
-    private Pose currentPose;
+    // Hand tracking - now using screen coordinates from SimpleInteractionBridge
+    private Vector2 leftHandScreenPosition;
+    private Vector2 rightHandScreenPosition;
+    private bool hasLeftHandData = false;
+    private bool hasRightHandData = false;
     private float handCheckInterval = 0.1f; // Check every 0.1 seconds
     private float lastCheckTime = 0f;
     
@@ -58,14 +63,19 @@ public class Tutorial1State : IGameState
         DebugLogger.LogInfo("[Tutorial1State] Entering Tutorial 1 - Quadrant Pointing");
         
         // Get references
-        inputFacade = manager.GetInputFacade();
+        interactionBridge = UnityEngine.Object.FindObjectOfType<SimpleInteractionBridge>();
         outputFacade = manager.GetOutputFacade();
         uiManager = UIManager.Instance;
         
-        // Subscribe to pose data
-        if (inputFacade != null)
+        // Subscribe to hand interaction data (same as HandVisualizer)
+        if (interactionBridge != null)
         {
-            inputFacade.OnPoseDataReceived += OnPoseDataReceived;
+            interactionBridge.OnHandInteraction.AddListener(OnHandInteractionReceived);
+            DebugLogger.LogInfo("[Tutorial1State] Subscribed to SimpleInteractionBridge hand events");
+        }
+        else
+        {
+            DebugLogger.LogError("[Tutorial1State] SimpleInteractionBridge not found!");
         }
         
         // Initialize progress
@@ -75,6 +85,8 @@ public class Tutorial1State : IGameState
         }
         completedCount = 0;
         targetQuadrant = Quadrant.TopLeft;
+        hasLeftHandData = false;
+        hasRightHandData = false;
         
         // Show tutorial UI with progress bar
         if (uiManager != null)
@@ -140,9 +152,9 @@ public class Tutorial1State : IGameState
         DebugLogger.LogInfo("[Tutorial1State] Exiting Tutorial 1");
         
         // Unsubscribe from events
-        if (inputFacade != null)
+        if (interactionBridge != null)
         {
-            inputFacade.OnPoseDataReceived -= OnPoseDataReceived;
+            interactionBridge.OnHandInteraction.RemoveListener(OnHandInteractionReceived);
         }
         
         // Clear UI
@@ -168,47 +180,60 @@ public class Tutorial1State : IGameState
     
     #region Hand Quadrant Checking
     
-    private void OnPoseDataReceived(Pose newPose)
+    /// <summary>
+    /// Receive hand interaction data from SimpleInteractionBridge (same as HandVisualizer)
+    /// This ensures cursor and quadrant detection are perfectly aligned
+    /// </summary>
+    private void OnHandInteractionReceived(SimpleInteractionBridge.HandInteractionData handData)
     {
-        currentPose = newPose;
-    }
-    
-    private void CheckHandQuadrant()
-    {
-        if (!currentPose.IsValid())
-        {
-            ResetHolding();
-            return;
-        }
+        // Note: We receive screen coordinates, but SimpleInteractionBridge doesn't tell us which hand
+        // For now, we'll track this as a single hand position and check if it matches our target
+        // TODO: Enhance SimpleInteractionBridge to distinguish left/right hands
         
-        // Get both hand positions
-        Vector3 leftWrist = currentPose.GetLandmark(BodyLandmark.LeftWrist);
-        Vector3 rightWrist = currentPose.GetLandmark(BodyLandmark.RightWrist);
-        
-        // Determine which hand to use based on target quadrant
-        Vector3 handToCheck = Vector3.zero;
+        // Store the position (this is screen coordinates)
+        // For simplicity, we'll use this for whichever hand we're currently tracking
         bool isLeftQuadrant = (targetQuadrant == Quadrant.TopLeft || targetQuadrant == Quadrant.BottomLeft);
         
         if (isLeftQuadrant)
         {
-            // Use left hand for left quadrants
-            handToCheck = leftWrist;
+            leftHandScreenPosition = handData.position;
+            hasLeftHandData = handData.isValid;
         }
         else
         {
-            // Use right hand for right quadrants
-            handToCheck = rightWrist;
+            rightHandScreenPosition = handData.position;
+            hasRightHandData = handData.isValid;
+        }
+    }
+    
+    private void CheckHandQuadrant()
+    {
+        // Determine which hand to check based on target quadrant
+        bool isLeftQuadrant = (targetQuadrant == Quadrant.TopLeft || targetQuadrant == Quadrant.BottomLeft);
+        
+        Vector2 handToCheck;
+        bool hasHandData;
+        
+        if (isLeftQuadrant)
+        {
+            handToCheck = leftHandScreenPosition;
+            hasHandData = hasLeftHandData;
+        }
+        else
+        {
+            handToCheck = rightHandScreenPosition;
+            hasHandData = hasRightHandData;
         }
         
-        // Check if we have valid hand
-        if (handToCheck == Vector3.zero)
+        // Check if we have valid hand data
+        if (!hasHandData)
         {
             ResetHolding();
             return;
         }
         
-        // Determine which quadrant the hand is in
-        Quadrant detectedQuadrant = GetQuadrantFromPosition(handToCheck);
+        // Determine which quadrant the hand is in (USING SCREEN COORDINATES)
+        Quadrant detectedQuadrant = GetQuadrantFromScreenPosition(handToCheck);
         
         if (detectedQuadrant != currentQuadrant)
         {
@@ -219,7 +244,7 @@ public class Tutorial1State : IGameState
             if (currentQuadrant != Quadrant.None)
             {
                 string handName = isLeftQuadrant ? "LEFT" : "RIGHT";
-                DebugLogger.LogInfo($"[Tutorial1State] {handName} hand moved to {currentQuadrant}");
+                DebugLogger.LogInfo($"[Tutorial1State] {handName} hand moved to {currentQuadrant} at screen position ({handToCheck.x:F1}, {handToCheck.y:F1})");
             }
         }
         
@@ -244,17 +269,18 @@ public class Tutorial1State : IGameState
         }
     }
     
-    private Quadrant GetQuadrantFromPosition(Vector3 handPos)
+    /// <summary>
+    /// Get quadrant from SCREEN COORDINATES (pixels)
+    /// This matches how HandVisualizer displays the cursor
+    /// </summary>
+    private Quadrant GetQuadrantFromScreenPosition(Vector2 screenPos)
     {
-        // Convert normalized coordinates to screen quadrants
-        // X: -0.5 to 0.5 (left to right)
-        // Y: -0.9 to -0.3 (top to bottom)
+        // Screen coordinates: (0,0) is bottom-left, (Screen.width, Screen.height) is top-right
+        float centerX = Screen.width * 0.5f;
+        float centerY = Screen.height * 0.5f;
         
-        float centerX = 0f;
-        float centerY = -0.6f; // Center of Y range
-        
-        bool isLeft = handPos.x < centerX;
-        bool isTop = handPos.y < centerY; // Y is inverted
+        bool isLeft = screenPos.x < centerX;
+        bool isTop = screenPos.y > centerY;  // In screen coords, higher Y = higher on screen
         
         if (isTop && isLeft)
             return Quadrant.TopLeft;
