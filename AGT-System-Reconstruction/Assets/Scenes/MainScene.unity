@@ -894,14 +894,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d9a38e8495ba1457a93f0a4bc2a94aa1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  handCursorPrefab: {fileID: 0}
+  landmarkCursorPrefab: {fileID: 0}
   uiCanvas: {fileID: 902797257}
   mainCamera: {fileID: 330585545}
-  showHandCursor: 1
-  showFingerCount: 1
-  showConfidence: 1
-  validHandColor: {r: 0, g: 1, b: 0, a: 1}
-  invalidHandColor: {r: 1, g: 0, b: 0, a: 1}
+  showShoulders: 1
+  showElbows: 1
+  showWrists: 1
+  showLandmarkCursors: 1
+  showLabels: 1
+  shoulderColor: {r: 0, g: 0, b: 1, a: 1}
+  elbowColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  wristColor: {r: 0, g: 1, b: 0, a: 1}
+  invalidColor: {r: 1, g: 0, b: 0, a: 1}
   cursorSize: 50
   showHandRepresentation: 0
   handModelPrefab: {fileID: 0}
@@ -2093,7 +2097,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &2087978108
 RectTransform:
   m_ObjectHideFlags: 0
