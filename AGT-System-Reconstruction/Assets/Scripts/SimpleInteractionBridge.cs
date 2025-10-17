@@ -2,13 +2,23 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using AgtOscData;
-using uOSC;
 using BodyTracking.DataModel;
 using Pose = BodyTracking.DataModel.Pose;
 
 /// <summary>
-/// Lightweight interaction bridge
-/// Optional middle ground between direct communication and full interaction layer
+/// Game Logic Layer - Converts pose data into game events
+/// 
+/// This class sits between InputFacade (raw pose data) and game systems (events).
+/// It processes body tracking data and converts it into meaningful game interactions.
+/// 
+/// Responsibilities:
+/// 1. Process pose data from InputFacade
+/// 2. Extract hand interaction information
+/// 3. Convert coordinates for game systems
+/// 4. Broadcast Unity Events for game logic
+/// 5. Send feedback to external systems
+/// 
+/// This layer is completely decoupled from OSC communication - InputFacade handles all that.
 /// </summary>
 public class SimpleInteractionBridge : MonoBehaviour
 {
@@ -18,7 +28,15 @@ public class SimpleInteractionBridge : MonoBehaviour
     public UnityEvent<string, float> OnGameEvent;
     
     [Header("Settings")]
-    [SerializeField] private bool debugMode = true; // Enabled for debugging hand tracking
+    [SerializeField] private bool debugMode = true;
+    
+    [Header("Hand Tracking")]
+    [SerializeField] public float handConfidenceThreshold = 0.1f; // Lowered from 0.7f
+    [SerializeField] public bool enableHandTracking = true;
+    [SerializeField] public float poseChangeThreshold = 0.001f; // Lowered from 0.01f
+    
+    // Internal state
+    private Pose lastProcessedPose;
     
     // data structures for events
     [System.Serializable]
@@ -40,476 +58,432 @@ public class SimpleInteractionBridge : MonoBehaviour
     
     void Start()
     {
-        SetupOSCHandlers();
-        SetupTouchDesignerHandlers();
+        // Initialize pose data
+        lastProcessedPose = new Pose(true);
         
-        // TEMPORARY: Force hand active states for debugging
-        handActiveStates[1] = true; // Left hand
-        handActiveStates[2] = true; // Right hand
-        
-        if (debugMode)
-        {
-            Debug.Log("[SimpleInteractionBridge] Lightweight interaction bridge initialized");
-            Debug.Log("[Bridge] TEMPORARY: Hand active states forced to true for debugging");
-        }
-    }
-    
-    void SetupTouchDesignerHandlers()
-    {
-        // Bind TouchDesigner hand tracking messages directly
-        if (OSCManager.Instance != null)
-        {
-            OSCManager.Instance.BindReceiver("/h1:hand_active", OnTouchDesignerHandActive);
-            OSCManager.Instance.BindReceiver("/h2:hand_active", OnTouchDesignerHandActive);
-            OSCManager.Instance.BindReceiver("/h1:pinch_midpoint:x", OnTouchDesignerHandPosition);
-            OSCManager.Instance.BindReceiver("/h1:pinch_midpoint:y", OnTouchDesignerHandPosition);
-            OSCManager.Instance.BindReceiver("/h1:pinch_midpoint:z", OnTouchDesignerHandPosition);
-            OSCManager.Instance.BindReceiver("/h2:pinch_midpoint:x", OnTouchDesignerHandPosition);
-            OSCManager.Instance.BindReceiver("/h2:pinch_midpoint:y", OnTouchDesignerHandPosition);
-            OSCManager.Instance.BindReceiver("/h2:pinch_midpoint:z", OnTouchDesignerHandPosition);
-            
-            // TouchDesigner body pose data (1D array format)
-            OSCManager.Instance.BindReceiver("/mediapipe/pose/world", OnTouchDesignerBodyPose);
-            
-        }
-    }
-    
-    void SetupOSCHandlers()
-    {
-        // Handle incoming data and convert to Unity events
-        OscHelper.BindHandler("/hand/data", OnHandDataReceived, "fingers", "x", "y", "confidence");
-        OscHelper.BindHandler("/ui/activated", OnUIActivatedReceived, "element_id", "success");
-        OscHelper.BindHandler("/game/event", OnGameEventReceived, "event", "intensity");
-        
-        // TouchDesigner gesture validation data
-        OscHelper.BindHandler("/gesture/validation", OnGestureValidationReceived, 
-            "element_id", "actual_fingers", "required_fingers", "overlap_percentage", "is_valid", "hand_x", "hand_y", "confidence");
-        
-        // TouchDesigner UI activation events
-        OscHelper.BindHandler("/ui/activation", OnUIActivationReceived, 
-            "element_id", "success", "actual_fingers", "required_fingers");
-        
-        // TouchDesigner hand tracking data (actual addresses being sent)
-        // Note: We'll handle these manually in OnMessageReceived since they have complex addresses
-    }
-    
-    
-    void OnHandDataReceived(OSCMessage message)
-    {
-        var handData = new HandInteractionData(
-            message.GetInt("fingers"),
-            new Vector2(message.GetFloat("x"), message.GetFloat("y")),
-            message.GetFloat("confidence", 1f),
-            message.GetFloat("confidence", 1f) > 0.7f
-        );
-        
-        OnHandInteraction?.Invoke(handData);
+        // Subscribe to InputFacade events
+        SubscribeToInputEvents();
         
         if (debugMode)
         {
-            Debug.Log($"[Bridge] Hand: {handData.fingers} fingers at ({handData.position.x:F2}, {handData.position.y:F2})");
+            DebugLogger.LogInfo("[SimpleInteractionBridge] Event-driven game logic layer initialized");
+            DebugLogger.LogInfo("[Bridge] Subscribed to InputFacade pose data events");
         }
     }
     
-    void OnUIActivatedReceived(OSCMessage message)
+    void OnDestroy()
     {
-        string elementId = message.GetString("element_id");
-        bool success = message.GetBool("success");
+        // Unsubscribe from events to prevent memory leaks
+        UnsubscribeFromInputEvents();
+    }
+    
+    /// <summary>
+    /// Subscribe to InputFacade events for pose data updates
+    /// </summary>
+    void SubscribeToInputEvents()
+    {
+        if (InputFacade.Instance != null)
+        {
+            InputFacade.Instance.OnPoseDataReceived += OnPoseDataReceived;
+        }
+        else
+        {
+            // If InputFacade isn't ready yet, try again later
+            StartCoroutine(RetrySubscribeToInputEvents());
+        }
+    }
+    
+    /// <summary>
+    /// Retry subscribing to InputFacade events if it wasn't ready initially
+    /// </summary>
+    System.Collections.IEnumerator RetrySubscribeToInputEvents()
+    {
+        while (InputFacade.Instance == null)
+        {
+            yield return new WaitForSeconds(0.1f);
+        }
         
+        InputFacade.Instance.OnPoseDataReceived += OnPoseDataReceived;
+        
+        if (debugMode)
+        {
+            DebugLogger.LogInfo("[Bridge] Successfully subscribed to InputFacade events after retry");
+        }
+    }
+    
+    /// <summary>
+    /// Unsubscribe from InputFacade events
+    /// </summary>
+    void UnsubscribeFromInputEvents()
+    {
+        if (InputFacade.Instance != null)
+        {
+            InputFacade.Instance.OnPoseDataReceived -= OnPoseDataReceived;
+        }
+    }
+    
+    /// <summary>
+    /// Event handler for new pose data from InputFacade
+    /// </summary>
+    void OnPoseDataReceived(Pose newPose)
+    {
+        if (!enableHandTracking) return;
+        
+        // Check if pose has changed significantly
+        if (HasPoseChanged(newPose))
+        {
+            ProcessHandInteractions(newPose);
+            lastProcessedPose.CopyFrom(newPose);
+        }
+    }
+    
+    /// <summary>
+    /// Check if the pose has changed significantly since last processing
+    /// </summary>
+    bool HasPoseChanged(Pose currentPose)
+    {
+        // Get hand tracking points (wrist if available, otherwise shoulder)
+        Vector3 leftHandCurrent = GetHandTrackingPoint(currentPose, true);
+        Vector3 rightHandCurrent = GetHandTrackingPoint(currentPose, false);
+        
+        Vector3 leftHandLast = GetHandTrackingPoint(lastProcessedPose, true);
+        Vector3 rightHandLast = GetHandTrackingPoint(lastProcessedPose, false);
+        
+        float leftMovement = Vector3.Distance(leftHandCurrent, leftHandLast);
+        float rightMovement = Vector3.Distance(rightHandCurrent, rightHandLast);
+        
+        return leftMovement > poseChangeThreshold || rightMovement > poseChangeThreshold;
+    }
+    
+    /// <summary>
+    /// Get hand tracking point - wrist if available, otherwise shoulder
+    /// </summary>
+    Vector3 GetHandTrackingPoint(Pose pose, bool isLeft)
+    {
+        BodyLandmark wristLandmark = isLeft ? BodyLandmark.LeftWrist : BodyLandmark.RightWrist;
+        BodyLandmark shoulderLandmark = isLeft ? BodyLandmark.LeftShoulder : BodyLandmark.RightShoulder;
+        
+        Vector3 wristPos = pose.GetLandmark(wristLandmark);
+        if (wristPos != Vector3.zero)
+        {
+            return wristPos;
+        }
+        
+        // Fallback to shoulder
+        Vector3 shoulderPos = pose.GetLandmark(shoulderLandmark);
+        if (shoulderPos != Vector3.zero)
+        {
+            // DebugLogger.LogInfo($"[Bridge] Using {(isLeft ? "Left" : "Right")}Shoulder as fallback for hand tracking");
+        }
+        
+        return shoulderPos;
+    }
+    
+    /// <summary>
+    /// Process hand interactions from pose data
+    /// </summary>
+    void ProcessHandInteractions(Pose pose)
+    {
+        // Process left hand (using fallback system)
+        Vector3 leftHandPos = GetHandTrackingPoint(pose, true);
+        if (leftHandPos != Vector3.zero)
+        {
+            ProcessHandInteraction(pose, BodyLandmark.LeftWrist, true);
+        }
+        
+        // Process right hand (using fallback system)
+        Vector3 rightHandPos = GetHandTrackingPoint(pose, false);
+        if (rightHandPos != Vector3.zero)
+        {
+            ProcessHandInteraction(pose, BodyLandmark.RightWrist, false);
+        }
+    }
+    
+    /// <summary>
+    /// Process individual hand interaction
+    /// </summary>
+    void ProcessHandInteraction(Pose pose, BodyLandmark wristLandmark, bool isLeftHand)
+    {
+        // Get hand position using fallback system (wrist if available, otherwise shoulder)
+        Vector3 handPosition = GetHandTrackingPoint(pose, isLeftHand);
+        
+        // Convert 3D world position to 2D screen coordinates for UI interaction
+        Vector2 screenPosition = ConvertWorldToScreenPosition(handPosition);
+        
+        // Determine finger count based on hand pose (simplified)
+        int fingerCount = EstimateFingerCount(pose, wristLandmark);
+        
+        // Calculate confidence based on pose validity
+        float confidence = CalculateHandConfidence(pose, wristLandmark);
+        
+        // Only trigger interaction if confidence is above threshold
+        if (confidence >= handConfidenceThreshold)
+        {
+            var handData = new HandInteractionData(
+                fingerCount,
+                screenPosition,
+                confidence,
+                true
+            );
+            
+            OnHandInteraction?.Invoke(handData);
+            
+            if (debugMode)
+            {
+                string handName = isLeftHand ? "Left" : "Right";
+                // DebugLogger.LogInfo($"[Bridge] {handName} hand interaction: {fingerCount} fingers at ({screenPosition.x:F2}, {screenPosition.y:F2}) - confidence: {confidence:F2}");
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Convert 3D world position to 2D screen coordinates
+    /// TouchDesigner is sending SCREEN coordinates directly, so no conversion needed
+    /// </summary>
+    Vector2 ConvertWorldToScreenPosition(Vector3 worldPosition)
+    {
+        // TouchDesigner is sending screen coordinates directly
+        // No conversion needed - just return as Vector2
+        return new Vector2(worldPosition.x, worldPosition.y);
+    }
+    
+    /// <summary>
+    /// Estimate finger count based on hand pose (simplified implementation)
+    /// </summary>
+    int EstimateFingerCount(Pose pose, BodyLandmark wristLandmark)
+    {
+        // This is a simplified implementation
+        // In a real system, you'd analyze finger landmark positions
+        // For now, return a default value
+        return 1; // Default to 1 finger (pointing gesture)
+    }
+    
+    /// <summary>
+    /// Calculate confidence for hand tracking
+    /// </summary>
+    float CalculateHandConfidence(Pose pose, BodyLandmark wristLandmark)
+    {
+        // Simple confidence calculation based on pose validity
+        if (!pose.IsValid()) return 0f;
+        
+        Vector3 wristPos = pose.GetLandmark(wristLandmark);
+        
+        // Check if wrist position is reasonable (not at origin)
+        if (wristPos == Vector3.zero) return 0f;
+        
+        // More lenient confidence calculation
+        // Any non-zero position with reasonable magnitude gets high confidence
+        float distance = wristPos.magnitude;
+        
+        // If distance is reasonable (between 0.1 and 2.0), give high confidence
+        if (distance >= 0.1f && distance <= 2.0f)
+        {
+            return 0.9f; // High confidence for reasonable positions
+        }
+        
+        // For other distances, scale confidence
+        return Mathf.Clamp01(distance / 1.0f);
+    }
+    
+    #region Public API for Manual Processing
+    
+    /// <summary>
+    /// Manually trigger hand interaction processing
+    /// Useful for testing or when you need immediate processing
+    /// </summary>
+    public void ProcessCurrentPose()
+    {
+        if (!enableHandTracking || InputFacade.Instance == null || !InputFacade.Instance.HasValidData())
+        {
+            return;
+        }
+        
+        Pose currentPose = InputFacade.Instance.GetCurrentPose();
+        ProcessHandInteractions(currentPose);
+        lastProcessedPose.CopyFrom(currentPose);
+            
+            if (debugMode)
+        {
+            DebugLogger.LogInfo("[Bridge] Manual pose processing triggered");
+        }
+    }
+    
+    /// <summary>
+    /// Force processing of a specific pose (for testing)
+    /// </summary>
+    public void ProcessSpecificPose(Pose pose)
+    {
+        if (!enableHandTracking) return;
+        
+        ProcessHandInteractions(pose);
+        lastProcessedPose.CopyFrom(pose);
+        
+        if (debugMode)
+        {
+            DebugLogger.LogInfo("[Bridge] Specific pose processing triggered");
+        }
+    }
+    
+    #endregion
+    
+    #region Public API for External Events
+    
+    /// <summary>
+    /// Trigger UI activation event (called by external systems)
+    /// </summary>
+    public void TriggerUIActivation(string elementId, bool success)
+    {
         OnUIActivated?.Invoke(elementId, success);
-        
-        if (debugMode)
+            
+            if (debugMode)
         {
-            Debug.Log($"[Bridge] UI {elementId} activated: {success}");
+            DebugLogger.LogInfo($"[Bridge] UI {elementId} {(success ? "activated" : "deactivated")}");
         }
     }
     
-    void OnGameEventReceived(OSCMessage message)
+    /// <summary>
+    /// Trigger game event (called by external systems)
+    /// </summary>
+    public void TriggerGameEvent(string eventName, float intensity = 1f)
     {
-        string eventName = message.GetString("event");
-        float intensity = message.GetFloat("intensity", 1f);
-        
         OnGameEvent?.Invoke(eventName, intensity);
         
         if (debugMode)
         {
-            Debug.Log($"[Bridge] Game event: {eventName} with intensity {intensity:F2}");
+            DebugLogger.LogInfo($"[Bridge] Game event: {eventName} with intensity {intensity:F2}");
         }
     }
     
-    void OnGestureValidationReceived(OSCMessage message)
+    /// <summary>
+    /// Trigger gesture validation event (called by external systems)
+    /// </summary>
+    public void TriggerGestureValidation(string elementId, int actualFingers, int requiredFingers, 
+        float overlapPercentage, bool isValid, Vector2 handPosition, float confidence)
     {
-        string elementId = message.GetString("element_id");
-        int actualFingers = message.GetInt("actual_fingers");
-        int requiredFingers = message.GetInt("required_fingers");
-        float overlapPercentage = message.GetFloat("overlap_percentage");
-        bool isValid = message.GetBool("is_valid");
-        float handX = message.GetFloat("hand_x");
-        float handY = message.GetFloat("hand_y");
-        float confidence = message.GetFloat("confidence");
-        
-        Vector2 handPosition = new Vector2(handX, handY);
-        
-        // Convert to existing HandInteractionData format
+        // Convert to HandInteractionData format
         var handData = new HandInteractionData(actualFingers, handPosition, confidence, isValid);
         OnHandInteraction?.Invoke(handData);
         
         if (debugMode)
         {
             string status = isValid ? "VALID" : "INVALID";
-            Debug.Log($"[Bridge] Gesture {status}: {elementId} - " +
+            DebugLogger.LogInfo($"[Bridge] Gesture {status}: {elementId} - " +
                      $"{actualFingers}/{requiredFingers} fingers, overlap: {(overlapPercentage * 100):F1}%");
         }
     }
     
-    void OnUIActivationReceived(OSCMessage message)
-    {
-        string elementId = message.GetString("element_id");
-        bool success = message.GetBool("success");
-        int actualFingers = message.GetInt("actual_fingers");
-        int requiredFingers = message.GetInt("required_fingers");
-        
-        OnUIActivated?.Invoke(elementId, success);
-        
-        if (debugMode)
-        {
-            Debug.Log($"[Bridge] UI {elementId} {(success ? "activated" : "deactivated")} " +
-                     $"with {actualFingers}/{requiredFingers} fingers");
-        }
-    }
     
-    // TouchDesigner hand tracking data handlers - now using Pose data model
-    private Dictionary<int, Pose> handPoses = new Dictionary<int, Pose>();
-    private Dictionary<int, bool> handActiveStates = new Dictionary<int, bool>();
+    #endregion
     
-    void OnTouchDesignerHandActive(uOSC.Message message)
-    {
-        // Extract hand ID from address (h1 or h2)
-        int handId = message.address.Contains("h1") ? 1 : 2;
-        
-        // Handle different data types that TouchDesigner might send
-        bool isActive = false;
-        if (message.values != null && message.values.Length > 0)
-        {
-            var value = message.values[0];
-            if (value is bool boolVal)
-            {
-                isActive = boolVal;
-            }
-            else if (value is int intVal)
-            {
-                isActive = intVal != 0;
-            }
-            else if (value is float floatVal)
-            {
-                isActive = floatVal != 0f;
-            }
-            else if (value is double doubleVal)
-            {
-                isActive = doubleVal != 0.0;
-            }
-        }
-        
-        handActiveStates[handId] = isActive;
-        
-        if (debugMode)
-        {
-            Debug.Log($"[Bridge] TouchDesigner Hand {handId} active: {isActive} (value type: {message.values?[0]?.GetType()})");
-        }
-    }
-    
-    void OnTouchDesignerHandPosition(uOSC.Message message)
-    {
-        // Extract hand ID from address (h1 or h2)
-        int handId = message.address.Contains("h1") ? 1 : 2;
-        bool isLeftHand = handId == 1;
-        
-        // Handle different data types that TouchDesigner might send
-        float value = 0f;
-        if (message.values != null && message.values.Length > 0)
-        {
-            var rawValue = message.values[0];
-            if (rawValue is float floatVal)
-            {
-                value = floatVal;
-            }
-            else if (rawValue is int intVal)
-            {
-                value = intVal;
-            }
-            else if (rawValue is double doubleVal)
-            {
-                value = (float)doubleVal;
-            }
-            else if (rawValue is bool boolVal)
-            {
-                value = boolVal ? 1f : 0f;
-            }
-        }
-        
-        // Get or create hand pose
-        if (!handPoses.ContainsKey(handId))
-        {
-            handPoses[handId] = new Pose(true);
-        }
-        
-        Pose currentPose = handPoses[handId];
-        
-        // Get current wrist position
-        BodyLandmark wristLandmark = isLeftHand ? BodyLandmark.LeftWrist : BodyLandmark.RightWrist;
-        Vector3 wristPos = currentPose.GetLandmark(wristLandmark);
-        
-        // Update the appropriate coordinate based on the message address
-        if (message.address.Contains(":x"))
-        {
-            wristPos.x = value;
-        }
-        else if (message.address.Contains(":y"))
-        {
-            wristPos.y = value;
-        }
-        else if (message.address.Contains(":z"))
-        {
-            wristPos.z = value;
-        }
-        
-        // Update pose with new wrist position
-        currentPose.SetLandmark(wristLandmark, wristPos);
-        handPoses[handId] = currentPose;
-        
-        // Check if we have a complete position and hand is active
-        if (handActiveStates.ContainsKey(handId) && handActiveStates[handId])
-        {
-            // Pass TouchDesigner coordinates as-is (they are normalized coordinates, not screen coordinates)
-            Vector2 touchDesignerPos = new Vector2(wristPos.x, wristPos.y);
-            
-            // Create simple hand data (no finger count complexity)
-            var handData = new HandInteractionData(
-                1, // Simple finger count - always 1 for now
-                touchDesignerPos, // TouchDesigner normalized coordinates
-                1f, // Default confidence
-                true
-            );
-            
-            OnHandInteraction?.Invoke(handData);
-            
-            if (debugMode)
-            {
-                Debug.Log($"[Bridge] TouchDesigner Hand {handId} ({wristLandmark}) position: ({wristPos.x:F2}, {wristPos.y:F2}, {wristPos.z:F2}) " +
-                         $"(address: {message.address}, value: {value}, type: {message.values?[0]?.GetType()})");
-            }
-        }
-    }
+    #region Public API for Sending Messages
     
     /// <summary>
-    /// Handle TouchDesigner body pose data in 1D array format
-    /// Expected format: [index_1, x, y, z, index_2, x, y, z, ..., index_n, x, y, z]
-    /// Array can have variable length (up to 33 groups = 132 elements)
-    /// Filter and process only hand-related landmarks (LeftWrist=15, RightWrist=16)
+    /// Send interaction result to external systems
+    /// Note: This method is kept for compatibility but now triggers internal events instead of OSC
     /// </summary>
-    void OnTouchDesignerBodyPose(uOSC.Message message)
-    {
-        if (message.values == null || message.values.Length == 0)
-        {
-            return;
-        }
-        
-        try
-        {
-            // Parse the 1D array structure: each group is [index, x, y, z] = 4 values
-            int landmarkCount = message.values.Length / 4;
-            
-            if (debugMode)
-            {
-                Debug.Log($"[Bridge] Body pose received: {landmarkCount} landmarks, {message.values.Length} total values");
-            }
-            
-            // Process each landmark and filter for hand data
-            for (int i = 0; i < landmarkCount; i++)
-            {
-                int baseIndex = i * 4;
-                
-                // Extract landmark data: [index, x, y, z]
-                int landmarkIndex = GetIntFromOSCValue(message.values[baseIndex]);
-                float x = GetFloatFromOSCValue(message.values[baseIndex + 1]);
-                float y = GetFloatFromOSCValue(message.values[baseIndex + 2]);
-                float z = GetFloatFromOSCValue(message.values[baseIndex + 3]);
-                
-                // Filter for hand landmarks only
-                if (landmarkIndex == 15) // LeftWrist
-                {
-                    if (debugMode)
-                    {
-                        Debug.Log($"[Bridge] Found LeftWrist (15) at ({x:F3}, {y:F3}, {z:F3})");
-                    }
-                    ProcessHandLandmark(1, true, x, y, z);
-                }
-                else if (landmarkIndex == 16) // RightWrist
-                {
-                    if (debugMode)
-                    {
-                        Debug.Log($"[Bridge] Found RightWrist (16) at ({x:F3}, {y:F3}, {z:F3})");
-                    }
-                    ProcessHandLandmark(2, false, x, y, z);
-                }
-                else if (debugMode && landmarkIndex >= 0 && landmarkIndex <= 32)
-                {
-                    // Log other landmarks for debugging
-                    Debug.Log($"[Bridge] Landmark {landmarkIndex} at ({x:F3}, {y:F3}, {z:F3}) - not a wrist");
-                }
-            }
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"[Bridge] Error parsing body pose message: {e.Message}");
-        }
-    }
-    
-    /// <summary>
-    /// Process hand landmark data and trigger hand interaction
-    /// </summary>
-    void ProcessHandLandmark(int handId, bool isLeftHand, float x, float y, float z)
-    {
-        // Get or create hand pose
-        if (!handPoses.ContainsKey(handId))
-        {
-            handPoses[handId] = new Pose(true);
-        }
-        
-        Pose currentPose = handPoses[handId];
-        BodyLandmark wristLandmark = isLeftHand ? BodyLandmark.LeftWrist : BodyLandmark.RightWrist;
-        
-        // Update wrist position
-        Vector3 wristPos = new Vector3(x, y, z);
-        currentPose.SetLandmark(wristLandmark, wristPos);
-        handPoses[handId] = currentPose;
-        
-        // Check if hand is active and trigger interaction
-        bool isHandActive = handActiveStates.ContainsKey(handId) && handActiveStates[handId];
-        
-        if (debugMode)
-        {
-            Debug.Log($"[Bridge] Hand {handId} ({wristLandmark}) at ({wristPos.x:F2}, {wristPos.y:F2}, {wristPos.z:F2}) - Active: {isHandActive}");
-        }
-        
-        if (isHandActive)
-        {
-            // Pass TouchDesigner coordinates as-is (they are normalized coordinates, not screen coordinates)
-            Vector2 touchDesignerPos = new Vector2(wristPos.x, wristPos.y);
-            
-            // Create hand interaction data
-            var handData = new HandInteractionData(
-                1, // Simple finger count
-                touchDesignerPos, // TouchDesigner normalized coordinates
-                1f, // Default confidence
-                true
-            );
-            
-            OnHandInteraction?.Invoke(handData);
-            
-            if (debugMode)
-            {
-                Debug.Log($"[Bridge] ✅ Hand interaction triggered for Hand {handId} at TouchDesigner position ({touchDesignerPos.x:F2}, {touchDesignerPos.y:F2})");
-            }
-        }
-        else if (debugMode)
-        {
-            Debug.Log($"[Bridge] ❌ Hand {handId} not active - no interaction triggered");
-        }
-    }
-    
-    /// <summary>
-    /// Helper to safely extract int from OSC value
-    /// </summary>
-    private int GetIntFromOSCValue(object value)
-    {
-        if (value is int i) return i;
-        if (value is float f) return (int)f;
-        if (value is double d) return (int)d;
-        if (value is bool b) return b ? 1 : 0;
-        return 0;
-    }
-    
-    /// <summary>
-    /// Helper to safely extract float from OSC value
-    /// </summary>
-    private float GetFloatFromOSCValue(object value)
-    {
-        if (value is float f) return f;
-        if (value is double d) return (float)d;
-        if (value is int i) return i;
-        if (value is bool b) return b ? 1f : 0f;
-        return 0f;
-    }
-    
-    #region Public API for Sending
-    
     public void SendInteractionResult(string elementId, bool success, int actualFingers, int requiredFingers)
     {
-        var result = DataTypes.InteractionResult(elementId, success, actualFingers, requiredFingers);
-        OscHelper.Send(result, "element_id", "success", "actual_fingers", "required_fingers");
+        // Trigger internal UI activation event
+        TriggerUIActivation(elementId, success);
         
         if (debugMode)
         {
-            Debug.Log($"[Bridge] Sent interaction result: {elementId} = {success}");
-        }
-    }
-    
-    public void SendGameState(int score, int level, int correct, int wrong)
-    {
-        var gameState = DataTypes.GameState(score, level, correct, wrong);
-        OscHelper.Send(gameState, "score", "level", "correct", "wrong");
-        
-        if (debugMode)
-        {
-            Debug.Log($"[Bridge] Sent game state: Score {score}, Level {level}");
-        }
-    }
-    
-    public void SendAudioEvent(string soundName, float volume = 1f)
-    {
-        var audioEvent = DataTypes.AudioEvent(soundName, volume);
-        OscHelper.Send(audioEvent, "sound", "volume");
-        
-        if (debugMode)
-        {
-            Debug.Log($"[Bridge] Sent audio event: {soundName} at volume {volume:F2}");
-        }
-    }
-    
-    public void SendCustomEvent(string eventName, float intensity = 1f)
-    {
-        var customEvent = DataTypes.Trigger(eventName, intensity);
-        OscHelper.Send(customEvent, "name", "intensity");
-        
-        if (debugMode)
-        {
-            Debug.Log($"[Bridge] Sent custom event: {eventName} with intensity {intensity:F2}");
+            DebugLogger.LogInfo($"[Bridge] Interaction result: {elementId} = {success} ({actualFingers}/{requiredFingers} fingers)");
         }
     }
     
     /// <summary>
-    /// Get current pose for a specific hand (using new Pose data model)
+    /// Send game state to external systems
+    /// Note: This method is kept for compatibility but now triggers internal events instead of OSC
     /// </summary>
-    /// <param name="handId">1 for left hand, 2 for right hand</param>
-    /// <returns>Current pose, or empty pose if hand not tracked</returns>
-    public Pose GetHandPose(int handId)
+    public void SendGameState(int score, int level, int correct, int wrong)
     {
-        if (handPoses.ContainsKey(handId))
+        // Trigger internal game event
+        TriggerGameEvent("game_state_update", score);
+        
+        if (debugMode)
         {
-            return handPoses[handId];
+            DebugLogger.LogInfo($"[Bridge] Game state: Score {score}, Level {level}, Correct: {correct}, Wrong: {wrong}");
+        }
+    }
+    
+    /// <summary>
+    /// Send audio event to external systems
+    /// Note: This method is kept for compatibility but now triggers internal events instead of OSC
+    /// </summary>
+    public void SendAudioEvent(string soundName, float volume = 1f)
+    {
+        // Trigger internal game event
+        TriggerGameEvent("audio_play", volume);
+        
+        if (debugMode)
+        {
+            DebugLogger.LogInfo($"[Bridge] Audio event: {soundName} at volume {volume:F2}");
+        }
+    }
+    
+    /// <summary>
+    /// Send custom event to external systems
+    /// Note: This method is kept for compatibility but now triggers internal events instead of OSC
+    /// </summary>
+    public void SendCustomEvent(string eventName, float intensity = 1f)
+    {
+        // Trigger internal game event
+        TriggerGameEvent(eventName, intensity);
+        
+        if (debugMode)
+        {
+            DebugLogger.LogInfo($"[Bridge] Custom event: {eventName} with intensity {intensity:F2}");
+        }
+    }
+    
+    /// <summary>
+    /// Get current pose data from InputFacade
+    /// </summary>
+    /// <returns>Current pose data, or empty pose if no data available</returns>
+    public Pose GetCurrentPose()
+    {
+        if (InputFacade.Instance != null && InputFacade.Instance.HasValidData())
+        {
+            return InputFacade.Instance.GetCurrentPose();
         }
         return new Pose(true);
     }
     
     /// <summary>
-    /// Check if a specific hand is currently active
+    /// Get specific landmark from current pose
     /// </summary>
-    /// <param name="handId">1 for left hand, 2 for right hand</param>
-    /// <returns>True if hand is active</returns>
-    public bool IsHandActive(int handId)
+    /// <param name="landmark">The landmark to retrieve</param>
+    /// <returns>3D position of the landmark</returns>
+    public Vector3 GetLandmark(BodyLandmark landmark)
     {
-        return handActiveStates.ContainsKey(handId) && handActiveStates[handId];
+        if (InputFacade.Instance != null && InputFacade.Instance.HasValidData())
+        {
+            return InputFacade.Instance.GetLandmark(landmark);
+        }
+        return Vector3.zero;
+    }
+    
+    /// <summary>
+    /// Check if valid pose data is available
+    /// </summary>
+    /// <returns>True if valid data is available</returns>
+    public bool HasValidPoseData()
+    {
+        return InputFacade.Instance != null && InputFacade.Instance.HasValidData();
+    }
+    
+    /// <summary>
+    /// Get hand tracking statistics
+    /// </summary>
+    /// <returns>Input statistics from InputFacade</returns>
+    public InputStatistics GetTrackingStatistics()
+    {
+        if (InputFacade.Instance != null)
+        {
+            return InputFacade.Instance.GetStatistics();
+        }
+        return new InputStatistics();
     }
     
     #endregion

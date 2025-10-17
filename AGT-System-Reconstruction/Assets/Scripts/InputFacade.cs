@@ -75,11 +75,6 @@ public class InputFacade : MonoBehaviour
     private Pose currentPose;
     private Pose cachedPose;
     
-    // Landmark accumulation (for incremental updates)
-    private Dictionary<int, LandmarkData> landmarkBuffer = new Dictionary<int, LandmarkData>();
-    private float lastLandmarkReceivedTime = 0f;
-    private float poseCompletionTimeout = 0.1f; // 100ms to receive all landmarks
-    
     // Data validity tracking
     private bool hasReceivedData = false;
     private float lastDataReceivedTime = 0f;
@@ -87,7 +82,9 @@ public class InputFacade : MonoBehaviour
     // Statistics
     private int totalPacketsReceived = 0;
     private int totalParseErrors = 0;
-    private int totalLandmarksReceived = 0;
+    
+    // Events
+    public System.Action<Pose> OnPoseDataReceived;
     
     #endregion
     
@@ -104,9 +101,9 @@ public class InputFacade : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"[InputFacade] Initialized - Listening on port {receivePort} for address '{expectedAddress}'");
-            Debug.Log($"[InputFacade] Coordinate transformation: {(enableCoordinateTransformation ? "Enabled" : "Disabled")}");
-            Debug.Log($"[InputFacade] Data caching: {(enableDataCaching ? "Enabled" : "Disabled")}");
+            DebugLogger.LogInfo($"[InputFacade] Initialized - Listening on port {receivePort} for address '{expectedAddress}'");
+            DebugLogger.LogInfo($"[InputFacade] Coordinate transformation: {(enableCoordinateTransformation ? "Enabled" : "Disabled")}");
+            DebugLogger.LogInfo($"[InputFacade] Data caching: {(enableDataCaching ? "Enabled" : "Disabled")}");
         }
     }
     
@@ -127,7 +124,7 @@ public class InputFacade : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log($"[InputFacade] OSC server initialized on port {receivePort}");
+            DebugLogger.LogInfo($"[InputFacade] OSC server initialized on port {receivePort}");
         }
     }
     
@@ -138,9 +135,6 @@ public class InputFacade : MonoBehaviour
     /// <summary>
     /// Private method - handles raw OSC messages
     /// This is the ONLY method that deals with OSC library specifics
-    /// 
-    /// NEW: Handles incremental landmark updates (one landmark per message)
-    /// Message format: [index(int), x(float), y(float), z(float), visibility(float)]
     /// </summary>
     private void OnOSCDataReceived(uOSC.Message message)
     {
@@ -152,111 +146,111 @@ public class InputFacade : MonoBehaviour
         
         try
         {
-            // Parse single landmark from message
-            LandmarkData landmark = ParseLandmarkFromMessage(message);
+            // Parse OSC message into Pose
+            Pose receivedPose = ParseOSCMessageToPose(message);
             
-            // Add to buffer
-            landmarkBuffer[landmark.index] = landmark;
-            lastLandmarkReceivedTime = Time.time;
-            totalLandmarksReceived++;
+            // Apply coordinate transformations if enabled
+            if (enableCoordinateTransformation)
+            {
+                receivedPose = TransformPoseCoordinates(receivedPose);
+            }
+            
+            // Update current pose
+            currentPose = receivedPose;
+            
+            // Cache for resilience
+            if (enableDataCaching)
+            {
+                cachedPose.CopyFrom(currentPose);
+            }
+            
+            // Update tracking
+            hasReceivedData = true;
+            lastDataReceivedTime = Time.time;
             totalPacketsReceived++;
+            
+            // Notify subscribers of new pose data
+            OnPoseDataReceived?.Invoke(currentPose);
             
             if (logDataReceived && debugMode)
             {
-                Debug.Log($"[InputFacade] Landmark #{landmark.index} received: ({landmark.position.x:F3}, {landmark.position.y:F3}, {landmark.position.z:F3}) vis:{landmark.visibility:F2}");
-            }
-            
-            // Check if we have enough landmarks to build a pose
-            if (landmarkBuffer.Count >= 20) // At least 20 landmarks for a valid pose
-            {
-                BuildPoseFromLandmarks();
+                int landmarkCount = message.values.Length / 4;
+                // DebugLogger.LogInfo($"[InputFacade] Pose data received (packet #{totalPacketsReceived}): {landmarkCount} landmarks from {message.values.Length} values");
             }
         }
         catch (System.Exception e)
         {
             totalParseErrors++;
-            Debug.LogError($"[InputFacade] Error parsing OSC message: {e.Message}");
+            DebugLogger.LogError($"[InputFacade] Error parsing OSC message: {e.Message}");
         }
     }
     
     /// <summary>
-    /// Parse a single landmark from TouchDesigner message
-    /// Format: [index(int), x(float), y(float), z(float), visibility(float)]
+    /// Parse raw OSC message into Pose structure
+    /// Expected format: Variable-length 1D array with groups of [index, x, y, z]
+    /// Example: [index_0, x, y, z, index_3, x, y, z, index_9, x, y, z]
     /// </summary>
-    private LandmarkData ParseLandmarkFromMessage(uOSC.Message message)
+    private Pose ParseOSCMessageToPose(uOSC.Message message)
     {
-        // Validate message has correct number of values
-        if (message.values == null || message.values.Length < 5)
+        if (message.values == null || message.values.Length == 0)
         {
-            throw new System.Exception($"Invalid OSC message: expected 5 values (index, x, y, z, visibility), got {message.values?.Length ?? 0}");
+            throw new System.Exception("Invalid OSC message: no values provided");
         }
         
-        LandmarkData landmark = new LandmarkData();
+        // Validate that we have at least one complete group (4 values: index, x, y, z)
+        if (message.values.Length < 4)
+        {
+            throw new System.Exception($"Invalid OSC message: need at least 4 values for one landmark group, got {message.values.Length}");
+        }
         
-        // [0] = Landmark index (int)
-        landmark.index = GetIntFromOSCValue(message.values[0]);
+        // Validate that the array length is divisible by 4 (each group has 4 values)
+        if (message.values.Length % 4 != 0)
+        {
+            throw new System.Exception($"Invalid OSC message: array length must be divisible by 4 (groups of [index,x,y,z]), got {message.values.Length}");
+        }
         
-        // [1] = X coordinate (float)
-        landmark.position.x = GetFloatFromOSCValue(message.values[1]);
-        
-        // [2] = Y coordinate (float)
-        landmark.position.y = GetFloatFromOSCValue(message.values[2]);
-        
-        // [3] = Z coordinate (float)
-        landmark.position.z = GetFloatFromOSCValue(message.values[3]);
-        
-        // [4] = Visibility (float, 0-1)
-        landmark.visibility = GetFloatFromOSCValue(message.values[4]);
-        
-        return landmark;
-    }
-    
-    /// <summary>
-    /// Build complete Pose from accumulated landmarks
-    /// </summary>
-    private void BuildPoseFromLandmarks()
-    {
         Pose pose = new Pose(true);
-        
-        // Copy all landmarks from buffer to pose
-        foreach (var kvp in landmarkBuffer)
-        {
-            int index = kvp.Key;
-            LandmarkData landmark = kvp.Value;
-            
-            // Validate index is within range
-            if (index >= 0 && index < BodyTracking.DataModel.BodyLandmarkExtensions.TotalLandmarks)
-            {
-                BodyTracking.DataModel.BodyLandmark bodyLandmark = BodyTracking.DataModel.BodyLandmarkExtensions.FromIndex(index);
-                
-                // Apply coordinate transformation if enabled
-                Vector3 position = landmark.position;
-                if (enableCoordinateTransformation)
-                {
-                    position = Vector3.Scale(position, coordinateScale) + coordinateOffset;
-                }
-                
-                pose.SetLandmark(bodyLandmark, position);
-            }
-        }
-        
-        // Update current pose
-        currentPose = pose;
-        
-        // Cache for resilience
-        if (enableDataCaching)
-        {
-            cachedPose.CopyFrom(currentPose);
-        }
-        
-        // Update tracking
-        hasReceivedData = true;
-        lastDataReceivedTime = Time.time;
+        int landmarkCount = message.values.Length / 4;
         
         if (debugMode)
         {
-            Debug.Log($"[InputFacade] ✅ Pose built from {landmarkBuffer.Count} landmarks");
+            // DebugLogger.LogInfo($"[InputFacade] Parsing {landmarkCount} landmarks from {message.values.Length} values");
         }
+        
+        // Parse each landmark group (4 values per group: index, x, y, z)
+        for (int groupIndex = 0; groupIndex < landmarkCount; groupIndex++)
+        {
+            int baseIndex = groupIndex * 4;
+            
+            // Extract landmark index
+            int landmarkIndex = GetIntFromOSCValue(message.values[baseIndex]);
+            
+            // Extract x, y, z coordinates
+            float x = GetFloatFromOSCValue(message.values[baseIndex + 1]);
+            float y = GetFloatFromOSCValue(message.values[baseIndex + 2]);
+            float z = GetFloatFromOSCValue(message.values[baseIndex + 3]);
+            
+            // Validate landmark index is within valid range
+            if (landmarkIndex < 0 || landmarkIndex >= BodyLandmarkExtensions.TotalLandmarks)
+            {
+                DebugLogger.LogWarning($"[InputFacade] Invalid landmark index {landmarkIndex}, skipping (valid range: 0-{BodyLandmarkExtensions.TotalLandmarks - 1})");
+                continue;
+            }
+            
+            // Create landmark position
+            Vector3 position = new Vector3(x, y, z);
+            
+            // Set landmark in pose
+            BodyLandmark landmark = BodyLandmarkExtensions.FromIndex(landmarkIndex);
+            pose.SetLandmark(landmark, position);
+            
+            if (debugMode)
+            {
+                // DebugLogger.LogInfo($"[InputFacade] Parsed landmark {landmarkIndex} ({landmark}) at ({x:F3}, {y:F3}, {z:F3})");
+            }
+        }
+        
+        return pose;
     }
     
     /// <summary>
@@ -269,7 +263,7 @@ public class InputFacade : MonoBehaviour
         if (value is double d) return (int)d;
         if (value is bool b) return b ? 1 : 0;
         
-        Debug.LogWarning($"[InputFacade] Unexpected OSC value type for int: {value?.GetType()}, defaulting to 0");
+        DebugLogger.LogWarning($"[InputFacade] Unexpected OSC value type for int conversion: {value?.GetType()}, defaulting to 0");
         return 0;
     }
     
@@ -283,22 +277,34 @@ public class InputFacade : MonoBehaviour
         if (value is int i) return i;
         if (value is bool b) return b ? 1f : 0f;
         
-        Debug.LogWarning($"[InputFacade] Unexpected OSC value type: {value?.GetType()}, defaulting to 0");
+        DebugLogger.LogWarning($"[InputFacade] Unexpected OSC value type: {value?.GetType()}, defaulting to 0");
         return 0f;
     }
     
-    #endregion
-    
-    #region Data Structures
-    
     /// <summary>
-    /// Stores a single landmark with visibility data
+    /// Transform pose from external coordinate space to Unity world space
     /// </summary>
-    private struct LandmarkData
+    private Pose TransformPoseCoordinates(Pose pose)
     {
-        public int index;
-        public Vector3 position;
-        public float visibility;
+        Pose transformedPose = new Pose(true);
+        
+        for (int i = 0; i < BodyLandmarkExtensions.TotalLandmarks; i++)
+        {
+            BodyLandmark landmark = BodyLandmarkExtensions.FromIndex(i);
+            Vector3 originalPos = pose.GetLandmark(landmark);
+            
+            // Apply scale and offset
+            Vector3 transformedPos = Vector3.Scale(originalPos, coordinateScale) + coordinateOffset;
+            
+            transformedPose.SetLandmark(landmark, transformedPos);
+            
+            if (logTransformations && debugMode && i == 0) // Log only first landmark to avoid spam
+            {
+                DebugLogger.LogInfo($"[InputFacade] Coordinate transform: {originalPos} → {transformedPos}");
+            }
+        }
+        
+        return transformedPose;
     }
     
     #endregion
@@ -323,7 +329,7 @@ public class InputFacade : MonoBehaviour
             {
                 if (debugMode)
                 {
-                    Debug.LogWarning($"[InputFacade] Data timeout ({timeSinceLastData:F2}s), using cached pose");
+                    DebugLogger.LogWarning($"[InputFacade] Data timeout ({timeSinceLastData:F2}s), using cached pose");
                 }
                 return cachedPose;
             }
@@ -415,7 +421,7 @@ public class InputFacade : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log("[InputFacade] Reset complete");
+            DebugLogger.LogInfo("[InputFacade] Reset complete");
         }
     }
     
@@ -449,13 +455,28 @@ public class InputFacade : MonoBehaviour
         GUILayout.Box("Input Facade Status");
         
         GUILayout.Label($"Port: {receivePort}");
+        GUILayout.Label($"Address: {expectedAddress}");
         GUILayout.Label($"Has Data: {hasReceivedData}");
         GUILayout.Label($"Valid: {HasValidData()}");
         GUILayout.Label($"Stale: {IsDataStale()}");
         GUILayout.Label($"Time Since Update: {GetTimeSinceLastUpdate():F2}s");
         GUILayout.Label($"Packets Received: {totalPacketsReceived}");
         GUILayout.Label($"Parse Errors: {totalParseErrors}");
-        GUILayout.Label($"Current Pose: {currentPose}");
+        
+        // Show current pose info
+        if (hasReceivedData)
+        {
+            int validLandmarks = 0;
+            for (int i = 0; i < BodyLandmarkExtensions.TotalLandmarks; i++)
+            {
+                BodyLandmark landmark = BodyLandmarkExtensions.FromIndex(i);
+                if (currentPose.GetLandmark(landmark) != Vector3.zero)
+                {
+                    validLandmarks++;
+                }
+            }
+            GUILayout.Label($"Valid Landmarks: {validLandmarks}/{BodyLandmarkExtensions.TotalLandmarks}");
+        }
         
         GUILayout.EndArea();
     }

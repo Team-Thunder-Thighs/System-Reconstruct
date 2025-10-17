@@ -237,18 +237,67 @@ namespace AgtOscData
     public static class OscHelper
     {
         /// <summary>
-        /// Send an OSC message using the simple system
+        /// Send an OSC message using OutputFacade
         /// </summary>
         public static void Send(OSCMessage message, params string[] paramOrder)
         {
-            if (OSCManager.Instance == null)
+            if (OutputFacade.Instance == null)
             {
-                Debug.LogWarning("[SimpleOSC] OSCManager not available");
+                Debug.LogWarning("[SimpleOSC] OutputFacade not available");
                 return;
             }
 
             var values = message.ToArray(paramOrder);
-            OSCManager.Instance.SendMessage(message.address, values);
+            
+            // Map common message types to OutputFacade intent-based methods
+            if (message.address == "/hand/data" && values.Length >= 4)
+            {
+                OutputFacade.Instance.SendHandData(
+                    (int)values[0], 
+                    (float)values[1], 
+                    (float)values[2], 
+                    (float)values[3]
+                );
+            }
+            else if (message.address == "/interaction/result" && values.Length >= 4)
+            {
+                OutputFacade.Instance.SendUIElementResult(
+                    values[0].ToString(), 
+                    (bool)values[1], 
+                    (int)values[2], 
+                    (int)values[3]
+                );
+            }
+            else if (message.address == "/game/state" && values.Length >= 4)
+            {
+                OutputFacade.Instance.SendGameState(
+                    (int)values[0], 
+                    (int)values[1], 
+                    (int)values[2], 
+                    (int)values[3]
+                );
+            }
+            else if (message.address == "/audio/event" && values.Length >= 2)
+            {
+                OutputFacade.Instance.SendAudioEvent(
+                    values[0].ToString(), 
+                    (float)values[1]
+                );
+            }
+            else if (message.address == "/trigger" && values.Length >= 2)
+            {
+                OutputFacade.Instance.SendCustomTrigger(
+                    values[0].ToString(), 
+                    (float)values[1]
+                );
+            }
+            else
+            {
+                // Fallback to generic message sending
+                Debug.LogWarning($"[SimpleOSC] No specific handler for {message.address}, using generic send");
+                // Note: OutputFacade doesn't have a generic SendMessage method by design
+                // This encourages using intent-based methods
+            }
         }
 
         /// <summary>
@@ -263,21 +312,16 @@ namespace AgtOscData
 
         /// <summary>
         /// Create message handler that automatically converts raw messages
+        /// Note: OutputFacade only handles outgoing messages. For incoming messages,
+        /// use InputFacade.OnPoseDataReceived event for body pose data, or implement
+        /// a separate incoming message handler if needed.
         /// </summary>
         public static void BindHandler(string address, System.Action<OSCMessage> handler,
             params string[] paramNames)
         {
-            if (OSCManager.Instance == null)
-            {
-                Debug.LogWarning("[SimpleOSC] OSCManager not available");
-                return;
-            }
-
-            OSCManager.Instance.BindReceiver(address, (rawMessage) =>
-            {
-                var oscMessage = MessageHandler.FromRawMessage(rawMessage, paramNames);
-                handler(oscMessage);
-            });
+            Debug.LogWarning($"[SimpleOSC] BindHandler is not supported with OutputFacade. " +
+                           $"OutputFacade only handles outgoing messages. " +
+                           $"For incoming body pose data, use InputFacade.OnPoseDataReceived event.");
         }
     }
 

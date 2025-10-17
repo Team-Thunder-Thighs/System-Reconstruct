@@ -25,7 +25,7 @@ public class HandVisualizer : MonoBehaviour
     [SerializeField] private float cursorSize = 50f;
     
     [Header("Coordinate System")]
-    [SerializeField] private bool useNormalizedCoordinates = true; // TouchDesigner sends normalized coords (X: -0.5 to 0.5, Y: -0.9 to -0.3)
+    [SerializeField] private bool useNormalizedCoordinates = false; // TouchDesigner is sending SCREEN coordinates, not normalized
     [SerializeField] private bool flipY = false; // Disabled - Y movement is already correct
     
     [Header("Hand Representation")]
@@ -80,13 +80,19 @@ public class HandVisualizer : MonoBehaviour
         
         if (debugMode)
         {
-            Debug.Log("[HandVisualizer] Hand visualizer initialized (using Pose data model)");
+            DebugLogger.LogInfo("[HandVisualizer] Hand visualizer initialized (using Pose data model)");
         }
     }
     
     void CreateHandVisualization()
     {
-        if (!showHandCursor || uiCanvas == null) return;
+        if (!showHandCursor || uiCanvas == null) 
+        {
+            DebugLogger.LogWarning($"[HandVisualizer] Cannot create hand visualization: showHandCursor={showHandCursor}, uiCanvas={uiCanvas != null}");
+            return;
+        }
+        
+        DebugLogger.LogInfo("[HandVisualizer] Creating hand cursor visualization");
         
         // Create hand cursor GameObject
         handCursor = new GameObject("HandCursor");
@@ -141,6 +147,8 @@ public class HandVisualizer : MonoBehaviour
         // Initially hide the cursor
         handCursor.SetActive(false);
         
+        DebugLogger.LogInfo($"[HandVisualizer] Hand cursor created successfully: showHandCursor={showHandCursor}, showFingerCount={showFingerCount}, showConfidence={showConfidence}");
+        
         // Create hand model if enabled
         if (showHandRepresentation && handModelPrefab != null)
         {
@@ -179,8 +187,8 @@ public class HandVisualizer : MonoBehaviour
         if (debugMode)
         {
             string coordType = useNormalizedCoordinates ? "normalized" : "screen";
-            Debug.Log($"[HandVisualizer] Hand data: {currentFingerCount} fingers at ({currentHandPosition.x:F3}, {currentHandPosition.y:F3}) {coordType}, " +
-                     $"Pose: {currentHandPose.GetLandmark(BodyLandmark.LeftWrist)}, valid: {currentHandValid}");
+            // DebugLogger.LogInfo($"[HandVisualizer] Hand data: {currentFingerCount} fingers at ({currentHandPosition.x:F3}, {currentHandPosition.y:F3}) {coordType}, " +
+                     // $"Pose: {currentHandPose.GetLandmark(BodyLandmark.LeftWrist)}, valid: {currentHandValid}");
         }
     }
     
@@ -192,10 +200,17 @@ public class HandVisualizer : MonoBehaviour
             // Show/hide cursor based on hand validity
             bool shouldShow = currentHandValid && currentConfidence > 0.5f;
             
+            // Debug logging for visibility issues
+            if (debugMode && !shouldShow)
+            {
+                DebugLogger.LogInfo($"[HandVisualizer] Hand cursor not showing: valid={currentHandValid}, confidence={currentConfidence:F2}, threshold=0.5f");
+            }
+            
             if (shouldShow != isHandVisible)
             {
                 handCursor.SetActive(shouldShow);
                 isHandVisible = shouldShow;
+                DebugLogger.LogInfo($"[HandVisualizer] Hand cursor visibility changed: {shouldShow}");
             }
             
             if (shouldShow)
@@ -271,12 +286,22 @@ public class HandVisualizer : MonoBehaviour
         
         // Convert screen coordinates to UI coordinates
         Vector2 uiPosition;
+        
+        // For Screen Space - Overlay canvases, worldCamera should be null
+        Camera canvasCamera = (uiCanvas.renderMode == RenderMode.ScreenSpaceOverlay) ? null : uiCanvas.worldCamera;
+        
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
             uiCanvas.transform as RectTransform,
             screenPosition,
-            uiCanvas.worldCamera,
+            canvasCamera,
             out uiPosition
         );
+        
+        // Debug logging for coordinate conversion issues
+        if (debugMode)
+        {
+            DebugLogger.LogInfo($"[HandVisualizer] Coordinate conversion: input=({inputPosition.x:F2},{inputPosition.y:F2}) -> screen=({screenPosition.x:F2},{screenPosition.y:F2}) -> ui=({uiPosition.x:F2},{uiPosition.y:F2})");
+        }
         
         return uiPosition;
     }

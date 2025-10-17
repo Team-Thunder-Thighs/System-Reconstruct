@@ -35,7 +35,7 @@ public class UIOverlapDetector : MonoBehaviour
     [SerializeField] private AudioClip defaultOverlapSound;
     
     [Header("Coordinate System")]
-    [SerializeField] private bool useNormalizedCoordinates = true; // TouchDesigner sends normalized coords (X: -0.5 to 0.5, Y: -0.9 to -0.3)
+    [SerializeField] private bool useNormalizedCoordinates = false; // TouchDesigner is sending SCREEN coordinates, not normalized
     [SerializeField] private bool flipY = false; // Disabled - Y movement is already correct
     
     [Header("TouchDesigner Communication")]
@@ -54,6 +54,8 @@ public class UIOverlapDetector : MonoBehaviour
     
     void Start()
     {
+        DebugLogger.LogInfo("[UIOverlapDetector] Start() method called - Initializing UIOverlapDetector");
+        
         // Initialize Pose data model
         currentHandPose = new Pose(true);
         
@@ -93,23 +95,21 @@ public class UIOverlapDetector : MonoBehaviour
         // Subscribe to hand interaction events
         if (interactionBridge != null)
         {
+            DebugLogger.LogInfo("[UIOverlapDetector] Found SimpleInteractionBridge, subscribing to hand events");
             interactionBridge.OnHandInteraction.AddListener(OnHandDataReceived);
-            if (debugMode)
-            {
-                Debug.Log("[UIOverlapDetector] ✅ Subscribed to hand interaction events");
-            }
+            DebugLogger.LogInfo("[UIOverlapDetector] ✅ Successfully subscribed to hand interaction events");
         }
         else
         {
-            Debug.LogError("[UIOverlapDetector] ❌ SimpleInteractionBridge not found! UI overlap detection will not work.");
+            DebugLogger.LogError("[UIOverlapDetector] ❌ SimpleInteractionBridge not found! UI overlap detection will not work.");
         }
         
         if (debugMode)
         {
-            Debug.Log($"[UIOverlapDetector] Found {uiElementMap.Count} UI elements to monitor (using Pose data model)");
+            DebugLogger.LogInfo($"[UIOverlapDetector] Found {uiElementMap.Count} UI elements to monitor (using Pose data model)");
             if (sendToTouchDesigner && interactionBridge != null)
             {
-                Debug.Log($"[UIOverlapDetector] TouchDesigner communication enabled via SimpleInteractionBridge");
+                DebugLogger.LogInfo($"[UIOverlapDetector] TouchDesigner communication enabled via SimpleInteractionBridge");
             }
         }
     }
@@ -139,7 +139,7 @@ public class UIOverlapDetector : MonoBehaviour
     {
         if (debugMode)
         {
-            Debug.Log($"[UIOverlapDetector] ✅ Hand data received: position=({handData.position.x:F2}, {handData.position.y:F2}), valid={handData.isValid}");
+            DebugLogger.LogInfo($"[UIOverlapDetector] ✅ Hand data received: position=({handData.position.x:F2}, {handData.position.y:F2}), valid={handData.isValid}");
         }
         
         // Check for UI overlap
@@ -155,12 +155,13 @@ public class UIOverlapDetector : MonoBehaviour
         Vector3 wristPos = new Vector3(screenPosition.x, screenPosition.y, 0f);
         currentHandPose.SetLandmark(BodyLandmark.LeftWrist, wristPos);
         
-        if (debugMode)
-        {
-            Debug.Log($"[UIOverlapDetector] Checking overlap at TouchDesigner position: ({handPosition.x:F2}, {handPosition.y:F2}) -> Screen: ({screenPosition.x:F2}, {screenPosition.y:F2}), " +
-                     $"Pose wrist: {currentHandPose.GetLandmark(BodyLandmark.LeftWrist)}");
-            Debug.Log($"[UIOverlapDetector] Found {uiElementMap.Count} UI elements to check");
-        }
+        // Reduced logging to avoid spam
+        // if (debugMode)
+        // {
+        //     DebugLogger.LogInfo($"[UIOverlapDetector] Checking overlap at TouchDesigner position: ({handPosition.x:F2}, {handPosition.y:F2}) -> Screen: ({screenPosition.x:F2}, {screenPosition.y:F2}), " +
+        //              $"Pose wrist: {currentHandPose.GetLandmark(BodyLandmark.LeftWrist)}");
+        //     DebugLogger.LogInfo($"[UIOverlapDetector] Found {uiElementMap.Count} UI elements to check");
+        // }
         
         foreach (var kvp in uiElementMap)
         {
@@ -170,13 +171,14 @@ public class UIOverlapDetector : MonoBehaviour
             bool isOverlapping = IsPointInRectTransform(screenPosition, element);
             bool wasOverlapping = overlapStates[elementId];
             
-            if (debugMode)
-            {
-                Vector2 localPoint;
-                RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                    element, screenPosition, null, out localPoint);
-                Debug.Log($"[UIOverlapDetector] Element '{elementId}': screen({screenPosition.x:F2},{screenPosition.y:F2}) -> local({localPoint.x:F2},{localPoint.y:F2}), rect({element.rect.x:F2},{element.rect.y:F2},{element.rect.width:F2},{element.rect.height:F2}), overlapping: {isOverlapping}");
-            }
+            // Reduced logging to avoid spam - only log when overlapping changes
+            // if (debugMode)
+            // {
+            //     Vector2 localPoint;
+            //     RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            //         element, screenPosition, null, out localPoint);
+            //     DebugLogger.LogInfo($"[UIOverlapDetector] Element '{elementId}': screen({screenPosition.x:F2},{screenPosition.y:F2}) -> local({localPoint.x:F2},{localPoint.y:F2}), rect({element.rect.x:F2},{element.rect.y:F2},{element.rect.width:F2},{element.rect.height:F2}), overlapping: {isOverlapping}");
+            // }
             
             if (isOverlapping && !wasOverlapping)
             {
@@ -198,7 +200,7 @@ public class UIOverlapDetector : MonoBehaviour
                 
                 if (debugMode)
                 {
-                    Debug.Log($"[UIOverlapDetector] ✅ Hand entered UI: {elementId} (color: {config.overlapColor})");
+                    DebugLogger.LogInfo($"[UIOverlapDetector] ✅ Hand entered UI: {elementId} (color: {config.overlapColor})");
                 }
             }
             else if (!isOverlapping && wasOverlapping)
@@ -218,7 +220,7 @@ public class UIOverlapDetector : MonoBehaviour
                 
                 if (debugMode)
                 {
-                    Debug.Log($"[UIOverlapDetector] ❌ Hand exited UI: {elementId} (color: {config.normalColor})");
+                    DebugLogger.LogInfo($"[UIOverlapDetector] ❌ Hand exited UI: {elementId} (color: {config.normalColor})");
                 }
             }
         }
@@ -264,7 +266,7 @@ public class UIOverlapDetector : MonoBehaviour
             
             if (debugMode)
             {
-                Debug.Log($"[UIOverlapDetector] Added UI element: {elementId}");
+                DebugLogger.LogInfo($"[UIOverlapDetector] Added UI element: {elementId}");
             }
         }
     }
@@ -278,7 +280,7 @@ public class UIOverlapDetector : MonoBehaviour
             
             if (debugMode)
             {
-                Debug.Log($"[UIOverlapDetector] Removed UI element: {elementId}");
+                DebugLogger.LogInfo($"[UIOverlapDetector] Removed UI element: {elementId}");
             }
         }
     }
@@ -326,7 +328,7 @@ public class UIOverlapDetector : MonoBehaviour
             
             if (debugMode)
             {
-                Debug.Log($"[UIOverlapDetector] Sent to TouchDesigner via SimpleInteractionBridge: ui_overlap_{elementId} = {messageText}");
+                DebugLogger.LogInfo($"[UIOverlapDetector] Sent to TouchDesigner via SimpleInteractionBridge: ui_overlap_{elementId} = {messageText}");
             }
         }
     }
@@ -358,35 +360,33 @@ public class UIOverlapDetector : MonoBehaviour
     
     /// <summary>
     /// Convert TouchDesigner coordinates to Unity screen coordinates
-    /// Uses the same conversion logic as HandVisualizer
+    /// TouchDesigner is sending SCREEN coordinates directly, so no conversion needed
     /// </summary>
     Vector2 ConvertToScreenCoordinates(Vector2 inputPosition)
     {
-        Vector2 screenPosition = inputPosition;
+        // TouchDesigner is sending screen coordinates directly
+        // No conversion needed - just return as-is
+        return inputPosition;
+    }
+    
+    /// <summary>
+    /// Test UI overlap detection with a known position
+    /// </summary>
+    [ContextMenu("Test UI Overlap Detection")]
+    public void TestUIOverlapDetection()
+    {
+        DebugLogger.LogInfo("[UIOverlapDetector] 🧪 Testing UI overlap detection...");
         
-        // Convert normalized coordinates to screen coordinates if needed
-        if (useNormalizedCoordinates)
+        // Test with center of screen
+        Vector2 testPosition = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+        DebugLogger.LogInfo($"[UIOverlapDetector] Testing with screen position: ({testPosition.x:F2}, {testPosition.y:F2})");
+        
+        CheckHandOverlap(testPosition);
+        
+        DebugLogger.LogInfo($"[UIOverlapDetector] Found {uiElementMap.Count} UI elements to check");
+        foreach (var kvp in uiElementMap)
         {
-            // TouchDesigner sends normalized coordinates in range:
-            // X: -0.5 to 0.5 (left to right)
-            // Y: -0.9 to -0.3 (top to bottom)
-            
-            // Convert X from -0.5..0.5 to 0..1, then to screen
-            float normalizedX = (inputPosition.x + 0.5f); // -0.5..0.5 -> 0..1
-            screenPosition.x = normalizedX * Screen.width;
-            
-            // Convert Y from -0.9..-0.3 to 0..1, then to screen (SIMPLE INVERT)
-            float normalizedY = ((inputPosition.y + 0.9f) / 0.6f); // -0.9..-0.3 -> 0..1
-            normalizedY = Mathf.Clamp01(normalizedY); // Ensure 0..1 range
-            normalizedY = 1f - normalizedY; // Invert the Y coordinate
-            screenPosition.y = normalizedY * Screen.height;
-            
-            if (flipY)
-            {
-                screenPosition.y = Screen.height - screenPosition.y;
-            }
+            DebugLogger.LogInfo($"[UIOverlapDetector] UI Element: {kvp.Key} at {kvp.Value.position}");
         }
-        
-        return screenPosition;
     }
 }
