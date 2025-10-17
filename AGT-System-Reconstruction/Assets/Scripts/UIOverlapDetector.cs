@@ -155,13 +155,11 @@ public class UIOverlapDetector : MonoBehaviour
         Vector3 wristPos = new Vector3(screenPosition.x, screenPosition.y, 0f);
         currentHandPose.SetLandmark(BodyLandmark.LeftWrist, wristPos);
         
-        // Reduced logging to avoid spam
-        // if (debugMode)
-        // {
-        //     DebugLogger.LogInfo($"[UIOverlapDetector] Checking overlap at TouchDesigner position: ({handPosition.x:F2}, {handPosition.y:F2}) -> Screen: ({screenPosition.x:F2}, {screenPosition.y:F2}), " +
-        //              $"Pose wrist: {currentHandPose.GetLandmark(BodyLandmark.LeftWrist)}");
-        //     DebugLogger.LogInfo($"[UIOverlapDetector] Found {uiElementMap.Count} UI elements to check");
-        // }
+        // Debug logging for overlap detection
+        if (debugMode)
+        {
+            DebugLogger.LogInfo($"[UIOverlapDetector] Checking overlap: TouchDesigner({handPosition.x:F2},{handPosition.y:F2}) -> Screen({screenPosition.x:F2},{screenPosition.y:F2}), checking {uiElementMap.Count} UI elements");
+        }
         
         foreach (var kvp in uiElementMap)
         {
@@ -171,14 +169,13 @@ public class UIOverlapDetector : MonoBehaviour
             bool isOverlapping = IsPointInRectTransform(screenPosition, element);
             bool wasOverlapping = overlapStates[elementId];
             
-            // Reduced logging to avoid spam - only log when overlapping changes
-            // if (debugMode)
-            // {
-            //     Vector2 localPoint;
-            //     RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            //         element, screenPosition, null, out localPoint);
-            //     DebugLogger.LogInfo($"[UIOverlapDetector] Element '{elementId}': screen({screenPosition.x:F2},{screenPosition.y:F2}) -> local({localPoint.x:F2},{localPoint.y:F2}), rect({element.rect.x:F2},{element.rect.y:F2},{element.rect.width:F2},{element.rect.height:F2}), overlapping: {isOverlapping}");
-            // }
+            if (debugMode)
+            {
+                Vector2 localPoint;
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    element, screenPosition, null, out localPoint);
+                DebugLogger.LogInfo($"[UIOverlapDetector] Element '{elementId}': screen({screenPosition.x:F2},{screenPosition.y:F2}) -> local({localPoint.x:F2},{localPoint.y:F2}), rect({element.rect.x:F2},{element.rect.y:F2},{element.rect.width:F2},{element.rect.height:F2}), overlapping: {isOverlapping}");
+            }
             
             if (isOverlapping && !wasOverlapping)
             {
@@ -360,13 +357,36 @@ public class UIOverlapDetector : MonoBehaviour
     
     /// <summary>
     /// Convert TouchDesigner coordinates to Unity screen coordinates
-    /// TouchDesigner is sending SCREEN coordinates directly, so no conversion needed
+    /// Uses the same conversion logic as HandVisualizer
     /// </summary>
     Vector2 ConvertToScreenCoordinates(Vector2 inputPosition)
     {
-        // TouchDesigner is sending screen coordinates directly
-        // No conversion needed - just return as-is
-        return inputPosition;
+        Vector2 screenPosition = inputPosition;
+        
+        // Convert normalized coordinates to screen coordinates if needed
+        if (useNormalizedCoordinates)
+        {
+            // TouchDesigner sends normalized coordinates in range:
+            // X: -0.5 to 0.5 (left to right)
+            // Y: -0.9 to -0.3 (top to bottom)
+            
+            // Convert X from -0.5..0.5 to 0..1, then to screen
+            float normalizedX = (inputPosition.x + 0.5f); // -0.5..0.5 -> 0..1
+            screenPosition.x = normalizedX * Screen.width;
+            
+            // Convert Y from -0.9..-0.3 to 0..1, then to screen (SIMPLE INVERT)
+            float normalizedY = ((inputPosition.y + 0.9f) / 0.6f); // -0.9..-0.3 -> 0..1
+            normalizedY = Mathf.Clamp01(normalizedY); // Ensure 0..1 range
+            normalizedY = 1f - normalizedY; // Invert the Y coordinate
+            screenPosition.y = normalizedY * Screen.height;
+            
+            if (flipY)
+            {
+                screenPosition.y = Screen.height - screenPosition.y;
+            }
+        }
+        
+        return screenPosition;
     }
     
     /// <summary>
