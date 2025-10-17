@@ -17,6 +17,7 @@ using UnityEngine;
 public class MainMenuState : IGameState
 {
     private GameManager manager;
+    private UIManager uiManager;
     private bool isInitialized = false;
     
     public void Enter(GameManager manager)
@@ -25,13 +26,17 @@ public class MainMenuState : IGameState
         
         DebugLogger.LogInfo("[MainMenuState] Entering Main Menu");
         
-        // TODO: Activate main menu UI panel
-        // TODO: Load main menu music
-        // TODO: Reset game data for new game
-        manager.ResetGameData();
+        // Get UI manager reference
+        uiManager = UIManager.Instance;
         
-        // TODO: Subscribe to UI button events
-        // Example: mainMenuUI.OnStartGameClicked += OnStartGameClicked;
+        // Show main menu UI
+        if (uiManager != null)
+        {
+            uiManager.ShowMainMenu();
+        }
+        
+        // Reset game data for new game
+        manager.ResetGameData();
         
         isInitialized = true;
         
@@ -49,16 +54,10 @@ public class MainMenuState : IGameState
         // Handle menu interactions
         // Example: Check for input, animate menu elements, etc.
         
-        // Debug: Press '1' to go to Tutorial
+        // Debug: Press '1' to go to Tutorial1
         if (Input.GetKeyDown(KeyCode.Alpha1))
         {
             OnStartTutorialClicked();
-        }
-        
-        // Debug: Press '2' to go directly to Gameplay
-        if (Input.GetKeyDown(KeyCode.Alpha2))
-        {
-            OnStartGameClicked();
         }
     }
     
@@ -66,9 +65,11 @@ public class MainMenuState : IGameState
     {
         DebugLogger.LogInfo("[MainMenuState] Exiting Main Menu");
         
-        // TODO: Deactivate main menu UI
-        // TODO: Unsubscribe from UI events
-        // TODO: Stop menu music
+        // Hide main menu UI
+        if (uiManager != null)
+        {
+            uiManager.HideMainMenu();
+        }
         
         isInitialized = false;
         
@@ -87,14 +88,14 @@ public class MainMenuState : IGameState
     // UI Event Handlers
     private void OnStartTutorialClicked()
     {
-        DebugLogger.LogInfo("[MainMenuState] Starting Tutorial");
-        manager.TransitionToState("Tutorial");
+        DebugLogger.LogInfo("[MainMenuState] Starting Tutorial 1");
+        manager.TransitionToState("Tutorial1");
     }
     
     private void OnStartGameClicked()
     {
-        DebugLogger.LogInfo("[MainMenuState] Starting Game");
-        manager.TransitionToState("Gameplay");
+        DebugLogger.LogInfo("[MainMenuState] Starting Game (not implemented yet)");
+        // manager.TransitionToState("Gameplay");
     }
     
     private void OnSettingsClicked()

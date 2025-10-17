@@ -147,12 +147,21 @@ public class GameManager : MonoBehaviour
         {
             case "MainMenu":
                 return new MainMenuState();
+            case "Tutorial1":
+                return new Tutorial1State();
+            case "Tutorial2":
+                return new Tutorial2State();
             case "Tutorial":
-                // return new TutorialState();
+                // Old tutorial state - redirect to Tutorial1
+                return new Tutorial1State();
             case "Gameplay":
                 // return new GameplayState();
+                DebugLogger.LogWarning("[GameManager] Gameplay state not implemented yet");
+                return null;
             case "Results":
                 // return new ResultsState();
+                DebugLogger.LogWarning("[GameManager] Results state not implemented yet");
+                return null;
             default:
                 DebugLogger.LogWarning($"[GameManager] Unknown state name: {stateName}, defaulting to MainMenu");
                 return new MainMenuState();
@@ -446,17 +455,13 @@ public class GameManager : MonoBehaviour
         {
             TransitionToState("MainMenu");
         }
-        if (GUILayout.Button("→ Tutorial"))
+        if (GUILayout.Button("→ Tutorial 1"))
         {
-            TransitionToState("Tutorial");
+            TransitionToState("Tutorial1");
         }
-        if (GUILayout.Button("→ Gameplay"))
+        if (GUILayout.Button("→ Tutorial 2"))
         {
-            TransitionToState("Gameplay");
-        }
-        if (GUILayout.Button("→ Results"))
-        {
-            TransitionToState("Results");
+            TransitionToState("Tutorial2");
         }
         
         GUILayout.EndArea();
