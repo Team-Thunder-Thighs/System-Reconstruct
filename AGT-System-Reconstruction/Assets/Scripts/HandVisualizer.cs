@@ -31,6 +31,13 @@ public class HandVisualizer : MonoBehaviour
     [SerializeField] private Color invalidColor = Color.red;
     [SerializeField] private float cursorSize = 30f;
     
+    [Header("Arm Direction Vectors")]
+    [SerializeField] private bool showArmDirectionVectors = true;
+    [SerializeField] private Color leftArmVectorColor = Color.cyan;
+    [SerializeField] private Color rightArmVectorColor = Color.magenta;
+    [SerializeField] private float vectorLineWidth = 4f;
+    [SerializeField] private float vectorLength = 150f; // Visual length of direction vector
+    
     [Header("Hand Representation")]
     [SerializeField] private bool showHandRepresentation = false;
     [SerializeField] private GameObject handModelPrefab;
@@ -44,6 +51,12 @@ public class HandVisualizer : MonoBehaviour
     private Dictionary<BodyLandmark, Image> landmarkImages = new Dictionary<BodyLandmark, Image>();
     private Dictionary<BodyLandmark, TextMeshProUGUI> landmarkLabels = new Dictionary<BodyLandmark, TextMeshProUGUI>();
     private GameObject handModel;
+    
+    // Arm direction vector visualization
+    private GameObject leftArmVectorLine;
+    private UnityEngine.UI.Image leftArmVectorImage;
+    private GameObject rightArmVectorLine;
+    private UnityEngine.UI.Image rightArmVectorImage;
     
     // Landmarks to visualize (11-16)
     private BodyLandmark[] landmarksToVisualize = new BodyLandmark[]
@@ -168,11 +181,52 @@ public class HandVisualizer : MonoBehaviour
         
         DebugLogger.LogInfo($"[HandVisualizer] Created {landmarkCursors.Count} landmark visualizations");
         
+        // Create arm direction vector lines
+        if (showArmDirectionVectors)
+        {
+            CreateArmDirectionVectors();
+        }
+        
         // Create hand model if enabled
         if (showHandRepresentation && handModelPrefab != null)
         {
             CreateHandModel();
         }
+    }
+    
+    void CreateArmDirectionVectors()
+    {
+        if (uiCanvas == null)
+        {
+            DebugLogger.LogWarning("[HandVisualizer] Cannot create arm direction vectors: uiCanvas is null");
+            return;
+        }
+        
+        DebugLogger.LogInfo("[HandVisualizer] Creating arm direction vectors");
+        
+        // Create LEFT arm direction vector
+        leftArmVectorLine = new GameObject("LeftArmDirectionVector");
+        leftArmVectorLine.transform.SetParent(uiCanvas.transform, false);
+        leftArmVectorImage = leftArmVectorLine.AddComponent<UnityEngine.UI.Image>();
+        leftArmVectorImage.color = leftArmVectorColor;
+        
+        RectTransform leftRect = leftArmVectorLine.GetComponent<RectTransform>();
+        leftRect.sizeDelta = new Vector2(vectorLength, vectorLineWidth);
+        leftRect.pivot = new Vector2(0f, 0.5f); // Pivot at left-center for rotation from shoulder
+        leftArmVectorLine.SetActive(false);
+        
+        // Create RIGHT arm direction vector
+        rightArmVectorLine = new GameObject("RightArmDirectionVector");
+        rightArmVectorLine.transform.SetParent(uiCanvas.transform, false);
+        rightArmVectorImage = rightArmVectorLine.AddComponent<UnityEngine.UI.Image>();
+        rightArmVectorImage.color = rightArmVectorColor;
+        
+        RectTransform rightRect = rightArmVectorLine.GetComponent<RectTransform>();
+        rightRect.sizeDelta = new Vector2(vectorLength, vectorLineWidth);
+        rightRect.pivot = new Vector2(0f, 0.5f); // Pivot at left-center for rotation from shoulder
+        rightArmVectorLine.SetActive(false);
+        
+        DebugLogger.LogInfo("[HandVisualizer] Created 2 arm direction vectors (Left, Right)");
     }
     
     bool ShouldShowLandmark(BodyLandmark landmark)
@@ -283,6 +337,12 @@ public class HandVisualizer : MonoBehaviour
             }
         }
         
+        // Update arm direction vectors
+        if (showArmDirectionVectors)
+        {
+            UpdateArmDirectionVectors();
+        }
+        
         // Update hand model if enabled
         if (showHandRepresentation && handModel != null)
         {
@@ -300,6 +360,104 @@ public class HandVisualizer : MonoBehaviour
                     handModel.transform.position = worldPosition;
                     UpdateHandModelFingers();
                 }
+            }
+        }
+    }
+    
+    void UpdateArmDirectionVectors()
+    {
+        if (!currentHandPose.IsValid()) return;
+        
+        // Get landmarks for LEFT arm
+        Vector3 leftShoulder = currentHandPose.GetLandmark(BodyLandmark.LeftShoulder);
+        Vector3 leftElbow = currentHandPose.GetLandmark(BodyLandmark.LeftElbow);
+        Vector3 leftWrist = currentHandPose.GetLandmark(BodyLandmark.LeftWrist);
+        
+        // Get landmarks for RIGHT arm
+        Vector3 rightShoulder = currentHandPose.GetLandmark(BodyLandmark.RightShoulder);
+        Vector3 rightElbow = currentHandPose.GetLandmark(BodyLandmark.RightElbow);
+        Vector3 rightWrist = currentHandPose.GetLandmark(BodyLandmark.RightWrist);
+        
+        // Update LEFT arm direction vector (calculated from shoulder→elbow and shoulder→wrist)
+        UpdateSingleArmDirectionVector(
+            leftArmVectorLine,
+            leftArmVectorImage,
+            leftShoulder,
+            leftElbow,
+            leftWrist,
+            leftArmVectorColor,
+            "Left"
+        );
+        
+        // Update RIGHT arm direction vector (calculated from shoulder→elbow and shoulder→wrist)
+        UpdateSingleArmDirectionVector(
+            rightArmVectorLine,
+            rightArmVectorImage,
+            rightShoulder,
+            rightElbow,
+            rightWrist,
+            rightArmVectorColor,
+            "Right"
+        );
+    }
+    
+    void UpdateSingleArmDirectionVector(
+        GameObject vectorLine,
+        UnityEngine.UI.Image vectorImage,
+        Vector3 shoulderWorld,
+        Vector3 elbowWorld,
+        Vector3 wristWorld,
+        Color vectorColor,
+        string armName)
+    {
+        if (vectorLine == null) return;
+        
+        // Check if all required landmarks have valid data
+        bool hasValidData = (shoulderWorld != Vector3.zero && 
+                            elbowWorld != Vector3.zero && 
+                            wristWorld != Vector3.zero);
+        
+        // Show/hide vector based on data availability
+        vectorLine.SetActive(hasValidData);
+        
+        if (hasValidData)
+        {
+            // Calculate direction vectors in world space
+            Vector3 shoulderToElbow = elbowWorld - shoulderWorld;
+            Vector3 shoulderToWrist = wristWorld - shoulderWorld;
+            
+            // Calculate COMBINED direction vector (average of both)
+            Vector3 combinedDirection = (shoulderToElbow.normalized + shoulderToWrist.normalized) / 2f;
+            combinedDirection.Normalize();
+            
+            // Convert shoulder position to screen/UI coordinates
+            Vector2 shoulderScreen = CoordinateConverter.WorldToScreen(shoulderWorld);
+            Vector2 shoulderUI = CoordinateConverter.ScreenToUI(shoulderScreen, uiCanvas);
+            
+            // Calculate end point for visualization (shoulder + direction * length)
+            Vector3 endWorldPos = shoulderWorld + combinedDirection * 0.3f; // 0.3 units in world space
+            Vector2 endScreen = CoordinateConverter.WorldToScreen(endWorldPos);
+            Vector2 endUI = CoordinateConverter.ScreenToUI(endScreen, uiCanvas);
+            
+            // Calculate direction in UI space
+            Vector2 directionUI = endUI - shoulderUI;
+            float angle = Mathf.Atan2(directionUI.y, directionUI.x) * Mathf.Rad2Deg;
+            
+            // Position vector line at shoulder
+            RectTransform vectorRect = vectorLine.GetComponent<RectTransform>();
+            vectorRect.anchoredPosition = shoulderUI;
+            
+            // Rotate vector to point in combined direction
+            vectorRect.rotation = Quaternion.Euler(0f, 0f, angle);
+            
+            // Update color
+            vectorImage.color = vectorColor;
+            
+            if (debugMode)
+            {
+                DebugLogger.LogInfo($"[HandVisualizer] {armName} arm vector: shoulder({shoulderUI.x:F1},{shoulderUI.y:F1}) " +
+                                   $"angle={angle:F1}° " +
+                                   $"combined_dir=({combinedDirection.x:F2},{combinedDirection.y:F2},{combinedDirection.z:F2})");
             }
         }
     }
