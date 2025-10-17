@@ -34,10 +34,6 @@ public class UIOverlapDetector : MonoBehaviour
     [SerializeField] private AudioSource audioSource;
     [SerializeField] private AudioClip defaultOverlapSound;
     
-    [Header("Coordinate System")]
-    [SerializeField] private bool useNormalizedCoordinates = false; // TouchDesigner is sending SCREEN coordinates, not normalized
-    [SerializeField] private bool flipY = false; // Disabled - Y movement is already correct
-    
     [Header("TouchDesigner Communication")]
     [SerializeField] private bool sendToTouchDesigner = true;
     [SerializeField] private SimpleInteractionBridge interactionBridge;
@@ -225,17 +221,16 @@ public class UIOverlapDetector : MonoBehaviour
     
     bool IsPointInRectTransform(Vector2 screenPoint, RectTransform rectTransform)
     {
-        // Convert screen point to local point in the rect transform's coordinate system
-        Vector2 localPoint;
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            rectTransform,
-            screenPoint,
-            null, // Use the canvas's camera if available
-            out localPoint
-        );
+        // Find the canvas this UI element belongs to
+        Canvas canvas = rectTransform.GetComponentInParent<Canvas>();
+        if (canvas == null)
+        {
+            DebugLogger.LogWarning($"[UIOverlapDetector] No canvas found for {rectTransform.name}");
+            return false;
+        }
         
-        // Check if the point is within the rect
-        return rectTransform.rect.Contains(localPoint);
+        // Use centralized CoordinateConverter for consistent overlap checking
+        return CoordinateConverter.IsScreenPointInRectTransform(screenPoint, rectTransform, canvas);
     }
     
     void SetElementColor(RectTransform element, Color color)
@@ -356,37 +351,14 @@ public class UIOverlapDetector : MonoBehaviour
     }
     
     /// <summary>
-    /// Convert TouchDesigner coordinates to Unity screen coordinates
-    /// Uses the same conversion logic as HandVisualizer
+    /// Convert input position to Unity screen coordinates
+    /// Uses centralized CoordinateConverter for consistent conversion
     /// </summary>
     Vector2 ConvertToScreenCoordinates(Vector2 inputPosition)
     {
-        Vector2 screenPosition = inputPosition;
-        
-        // Convert normalized coordinates to screen coordinates if needed
-        if (useNormalizedCoordinates)
-        {
-            // TouchDesigner sends normalized coordinates in range:
-            // X: -0.5 to 0.5 (left to right)
-            // Y: -0.9 to -0.3 (top to bottom)
-            
-            // Convert X from -0.5..0.5 to 0..1, then to screen
-            float normalizedX = (inputPosition.x + 0.5f); // -0.5..0.5 -> 0..1
-            screenPosition.x = normalizedX * Screen.width;
-            
-            // Convert Y from -0.9..-0.3 to 0..1, then to screen (SIMPLE INVERT)
-            float normalizedY = ((inputPosition.y + 0.9f) / 0.6f); // -0.9..-0.3 -> 0..1
-            normalizedY = Mathf.Clamp01(normalizedY); // Ensure 0..1 range
-            normalizedY = 1f - normalizedY; // Invert the Y coordinate
-            screenPosition.y = normalizedY * Screen.height;
-            
-            if (flipY)
-            {
-                screenPosition.y = Screen.height - screenPosition.y;
-            }
-        }
-        
-        return screenPosition;
+        // InputPosition is already screen coordinates from SimpleInteractionBridge
+        // No additional conversion needed - just return as-is
+        return inputPosition;
     }
     
     /// <summary>

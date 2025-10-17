@@ -31,9 +31,9 @@ public class SimpleInteractionBridge : MonoBehaviour
     [SerializeField] private bool debugMode = true;
     
     [Header("Hand Tracking")]
-    [SerializeField] public float handConfidenceThreshold = 0.1f; // Lowered from 0.7f
+    [SerializeField] public float handConfidenceThreshold = 0.5f; // Lowered from 0.7f
     [SerializeField] public bool enableHandTracking = true;
-    [SerializeField] public float poseChangeThreshold = 0.001f; // Lowered from 0.01f
+    [SerializeField] public float poseChangeThreshold = 0.01f; // Lowered from 0.01f
     
     // Internal state
     private Pose lastProcessedPose;
@@ -238,13 +238,12 @@ public class SimpleInteractionBridge : MonoBehaviour
     
     /// <summary>
     /// Convert 3D world position to 2D screen coordinates
-    /// TouchDesigner is sending SCREEN coordinates directly, so no conversion needed
+    /// Uses centralized CoordinateConverter for consistent conversion
     /// </summary>
     Vector2 ConvertWorldToScreenPosition(Vector3 worldPosition)
     {
-        // TouchDesigner is sending screen coordinates directly
-        // No conversion needed - just return as Vector2
-        return new Vector2(worldPosition.x, worldPosition.y);
+        // Use centralized coordinate conversion
+        return CoordinateConverter.WorldToScreen(worldPosition);
     }
     
     /// <summary>

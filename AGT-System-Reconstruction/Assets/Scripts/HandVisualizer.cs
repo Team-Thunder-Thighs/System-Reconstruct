@@ -24,10 +24,6 @@ public class HandVisualizer : MonoBehaviour
     [SerializeField] private Color invalidHandColor = Color.red;
     [SerializeField] private float cursorSize = 50f;
     
-    [Header("Coordinate System")]
-    [SerializeField] private bool useNormalizedCoordinates = false; // TouchDesigner is sending SCREEN coordinates, not normalized
-    [SerializeField] private bool flipY = false; // Disabled - Y movement is already correct
-    
     [Header("Hand Representation")]
     [SerializeField] private bool showHandRepresentation = false;
     [SerializeField] private GameObject handModelPrefab;
@@ -186,8 +182,7 @@ public class HandVisualizer : MonoBehaviour
         
         if (debugMode)
         {
-            string coordType = useNormalizedCoordinates ? "normalized" : "screen";
-            // DebugLogger.LogInfo($"[HandVisualizer] Hand data: {currentFingerCount} fingers at ({currentHandPosition.x:F3}, {currentHandPosition.y:F3}) {coordType}, " +
+            // DebugLogger.LogInfo($"[HandVisualizer] Hand data: {currentFingerCount} fingers at ({currentHandPosition.x:F3}, {currentHandPosition.y:F3}) screen coords, " +
                      // $"Pose: {currentHandPose.GetLandmark(BodyLandmark.LeftWrist)}, valid: {currentHandValid}");
         }
     }
@@ -259,48 +254,14 @@ public class HandVisualizer : MonoBehaviour
     {
         if (uiCanvas == null) return Vector2.zero;
         
-        Vector2 screenPosition = inputPosition;
-        
-        // Convert normalized coordinates to screen coordinates if needed
-        if (useNormalizedCoordinates)
-        {
-            // TouchDesigner sends normalized coordinates in range:
-            // X: -0.5 to 0.5 (left to right)
-            // Y: -0.9 to -0.3 (top to bottom)
-            
-            // Convert X from -0.5..0.5 to 0..1, then to screen
-            float normalizedX = (inputPosition.x + 0.5f); // -0.5..0.5 -> 0..1
-            screenPosition.x = normalizedX * Screen.width;
-            
-            // Convert Y from -0.9..-0.3 to 0..1, then to screen (SIMPLE INVERT)
-            float normalizedY = ((inputPosition.y + 0.9f) / 0.6f); // -0.9..-0.3 -> 0..1
-            normalizedY = Mathf.Clamp01(normalizedY); // Ensure 0..1 range
-            normalizedY = 1f - normalizedY; // Invert the Y coordinate
-            screenPosition.y = normalizedY * Screen.height;
-            
-            if (flipY)
-            {
-                screenPosition.y = Screen.height - screenPosition.y;
-            }
-        }
-        
-        // Convert screen coordinates to UI coordinates
-        Vector2 uiPosition;
-        
-        // For Screen Space - Overlay canvases, worldCamera should be null
-        Camera canvasCamera = (uiCanvas.renderMode == RenderMode.ScreenSpaceOverlay) ? null : uiCanvas.worldCamera;
-        
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            uiCanvas.transform as RectTransform,
-            screenPosition,
-            canvasCamera,
-            out uiPosition
-        );
+        // Use centralized CoordinateConverter
+        // InputPosition is already screen coordinates from SimpleInteractionBridge
+        Vector2 uiPosition = CoordinateConverter.ScreenToUI(inputPosition, uiCanvas);
         
         // Debug logging for coordinate conversion issues
         if (debugMode)
         {
-            DebugLogger.LogInfo($"[HandVisualizer] Coordinate conversion: input=({inputPosition.x:F2},{inputPosition.y:F2}) -> screen=({screenPosition.x:F2},{screenPosition.y:F2}) -> ui=({uiPosition.x:F2},{uiPosition.y:F2})");
+            DebugLogger.LogInfo($"[HandVisualizer] Coordinate conversion: screen=({inputPosition.x:F2},{inputPosition.y:F2}) -> ui=({uiPosition.x:F2},{uiPosition.y:F2})");
         }
         
         return uiPosition;
@@ -310,34 +271,10 @@ public class HandVisualizer : MonoBehaviour
     {
         if (mainCamera == null) return Vector3.zero;
         
-        Vector2 screenPosition = inputPosition;
-        
-        // Convert normalized coordinates to screen coordinates if needed
-        if (useNormalizedCoordinates)
-        {
-            // TouchDesigner sends normalized coordinates in range:
-            // X: -0.5 to 0.5 (left to right)
-            // Y: -0.9 to -0.3 (top to bottom)
-            
-            // Convert X from -0.5..0.5 to 0..1, then to screen
-            float normalizedX = (inputPosition.x + 0.5f); // -0.5..0.5 -> 0..1
-            screenPosition.x = normalizedX * Screen.width;
-            
-            // Convert Y from -0.9..-0.3 to 0..1, then to screen (SIMPLE INVERT)
-            float normalizedY = ((inputPosition.y + 0.9f) / 0.6f); // -0.9..-0.3 -> 0..1
-            normalizedY = Mathf.Clamp01(normalizedY); // Ensure 0..1 range
-            normalizedY = 1f - normalizedY; // Invert the Y coordinate
-            screenPosition.y = normalizedY * Screen.height;
-            
-            if (flipY)
-            {
-                screenPosition.y = Screen.height - screenPosition.y;
-            }
-        }
-        
-        // Convert screen coordinates to world coordinates
-        Vector3 screenPos = new Vector3(screenPosition.x, screenPosition.y, mainCamera.nearClipPlane + 1f);
-        return mainCamera.ScreenToWorldPoint(screenPos);
+        // Use centralized CoordinateConverter
+        // InputPosition is already screen coordinates from SimpleInteractionBridge
+        float depth = mainCamera.nearClipPlane + 1f;
+        return CoordinateConverter.ScreenToWorldCamera(inputPosition, depth, mainCamera);
     }
     
     void UpdateHandModelFingers()
@@ -445,8 +382,7 @@ public class HandVisualizer : MonoBehaviour
             
             // Draw finger count text
             #if UNITY_EDITOR
-            string coordInfo = useNormalizedCoordinates ? " (norm)" : " (screen)";
-            UnityEditor.Handles.Label(worldPos + Vector3.up * 0.2f, $"Fingers: {currentFingerCount}{coordInfo}");
+            UnityEditor.Handles.Label(worldPos + Vector3.up * 0.2f, $"Fingers: {currentFingerCount} (screen)");
             #endif
         }
     }
