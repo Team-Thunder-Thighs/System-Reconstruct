@@ -297,17 +297,6 @@ Example: [0, 0.1, -0.5, 0.0, 11, -0.2, -0.4, 0.0, ...]
 
 ---
 
-## 🐛 Quick Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| **No OSC data** | Check TD running, port 7000, firewall, `debug_log.txt` |
-| **Hand tracking fails** | Check wrist landmarks, confidence threshold (0.5), HandVisualizer active |
-| **Direction inverted** | Verify `adjustedY = -direction.y` in Tutorial1State |
-| **UI not responding** | Check UIManager found elements, Canvas = "Screen Space - Overlay" |
-
----
-
 ## 🔍 Debug Tools
 
 ```
